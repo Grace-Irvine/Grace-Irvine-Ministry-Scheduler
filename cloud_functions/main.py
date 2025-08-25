@@ -13,6 +13,7 @@ from datetime import datetime
 # Google Cloud Functions 依赖
 import functions_framework
 from flask import Request
+from google.cloud import secretmanager
 
 # 项目模块
 from email_sender import EmailSender, EmailRecipient
@@ -22,22 +23,55 @@ from scheduler import GoogleSheetsExtractor, NotificationGenerator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def _get_secret(secret_id: str, project_id: str = "ai-for-god") -> str:
+    """从 Secret Manager 获取密钥"""
+    try:
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception as e:
+        logger.error(f"Failed to get secret {secret_id}: {e}")
+        return ""
+
 def _load_config() -> Dict[str, Any]:
-    """从环境变量加载配置"""
+    """从 Secret Manager 加载配置"""
     config = {
-        'google_spreadsheet_id': os.getenv('GOOGLE_SPREADSHEET_ID'),
-        'sender_email': os.getenv('SENDER_EMAIL', 'jonathanjing@graceirvine.org'),
-        'sender_name': os.getenv('SENDER_NAME', 'Grace Irvine 事工协调'),
-        'email_password': os.getenv('EMAIL_PASSWORD'),
-        'recipient_emails': os.getenv('RECIPIENT_EMAILS', '').split(','),
-        'service_account_key': os.getenv('GOOGLE_SERVICE_ACCOUNT_KEY')
+        'google_spreadsheet_id': _get_secret('google-spreadsheet-id'),
+        'sender_email': _get_secret('sender-email'),
+        'sender_name': _get_secret('sender-name'),
+        'email_password': _get_secret('email-password'),
+        'recipient_emails': _get_secret('recipient-emails').split(','),
+        'service_account_key': _get_secret('google-service-account-key')
     }
     
     # 验证必需配置
     if not config['google_spreadsheet_id']:
-        raise ValueError("GOOGLE_SPREADSHEET_ID environment variable is required")
+        raise ValueError("google-spreadsheet-id secret is required")
     if not config['email_password']:
-        raise ValueError("EMAIL_PASSWORD environment variable is required")
+        raise ValueError("email-password secret is required")
+    
+    # 设置环境变量供其他模块使用
+    os.environ['GOOGLE_SPREADSHEET_ID'] = config['google_spreadsheet_id']
+    os.environ['SENDER_EMAIL'] = config['sender_email']
+    os.environ['SENDER_NAME'] = config['sender_name']
+    os.environ['EMAIL_PASSWORD'] = config['email_password']
+    
+    # 写入服务账号密钥文件到临时位置
+    if config['service_account_key']:
+        import tempfile
+        import json
+        
+        # 创建临时目录
+        temp_dir = tempfile.mkdtemp()
+        service_account_path = os.path.join(temp_dir, 'service_account.json')
+        
+        # 写入服务账号密钥
+        with open(service_account_path, 'w') as f:
+            f.write(config['service_account_key'])
+        
+        # 设置环境变量
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = service_account_path
     
     return config
 
@@ -64,13 +98,22 @@ def send_weekly_confirmation(request: Request) -> tuple:
         响应元组 (消息, 状态码)
     """
     try:
+        import tempfile
         logger.info("开始执行周三确认通知任务")
         
         # 加载配置
         config = _load_config()
         
         # 初始化服务
-        extractor = GoogleSheetsExtractor(config['google_spreadsheet_id'])
+        # 使用临时服务账号文件路径
+        temp_dir = tempfile.mkdtemp()
+        service_account_path = os.path.join(temp_dir, 'service_account.json')
+        
+        # 写入服务账号密钥
+        with open(service_account_path, 'w') as f:
+            f.write(config['service_account_key'])
+        
+        extractor = GoogleSheetsExtractor(config['google_spreadsheet_id'], service_account_path)
         notification_generator = NotificationGenerator(extractor)
         email_sender = EmailSender()
         
@@ -130,13 +173,22 @@ def send_sunday_reminder(request: Request) -> tuple:
         响应元组 (消息, 状态码)
     """
     try:
+        import tempfile
         logger.info("开始执行周六提醒通知任务")
         
         # 加载配置
         config = _load_config()
         
         # 初始化服务
-        extractor = GoogleSheetsExtractor(config['google_spreadsheet_id'])
+        # 使用临时服务账号文件路径
+        temp_dir = tempfile.mkdtemp()
+        service_account_path = os.path.join(temp_dir, 'service_account.json')
+        
+        # 写入服务账号密钥
+        with open(service_account_path, 'w') as f:
+            f.write(config['service_account_key'])
+        
+        extractor = GoogleSheetsExtractor(config['google_spreadsheet_id'], service_account_path)
         notification_generator = NotificationGenerator(extractor)
         email_sender = EmailSender()
         
