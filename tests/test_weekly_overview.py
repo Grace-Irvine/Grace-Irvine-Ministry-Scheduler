@@ -3,7 +3,10 @@
 测试周程概览功能
 Test Weekly Schedule Overview Feature
 """
-from focused_data_cleaner import FocusedDataCleaner
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from src.data_cleaner import FocusedDataCleaner
 from datetime import date, timedelta
 
 def get_sunday_of_week(target_date):

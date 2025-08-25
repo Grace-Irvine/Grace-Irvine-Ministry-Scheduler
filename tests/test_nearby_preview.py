@@ -3,7 +3,10 @@
 测试近期排程预览功能
 Test Nearby Schedule Preview Feature
 """
-from focused_data_cleaner import FocusedDataCleaner
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from src.data_cleaner import FocusedDataCleaner
 from datetime import date, timedelta
 
 def test_nearby_preview():

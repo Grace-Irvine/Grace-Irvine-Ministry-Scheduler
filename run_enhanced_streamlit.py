@@ -9,6 +9,9 @@ import os
 from pathlib import Path
 from datetime import date, timedelta
 
+# 添加项目根目录到 Python 路径
+sys.path.insert(0, str(Path(__file__).parent))
+
 def show_preview():
     """显示功能预览"""
     print("🎯 Grace Irvine Ministry Scheduler - 增强版")
@@ -51,15 +54,15 @@ def check_dependencies():
         ('streamlit', 'Streamlit Web框架'),
         ('pandas', '数据处理'),
         ('yaml', 'YAML配置文件'),
-        ('focused_data_cleaner', '专注数据清洗器')
+        ('src.data_cleaner', '专注数据清洗器')
     ]
     
     missing = []
     for module, description in required_modules:
         try:
-            if module == 'focused_data_cleaner':
+            if module == 'src.data_cleaner':
                 # 检查自定义模块
-                from focused_data_cleaner import FocusedDataCleaner
+                from src.data_cleaner import FocusedDataCleaner
             else:
                 __import__(module)
             print(f"  ✅ {description}")
@@ -70,7 +73,7 @@ def check_dependencies():
     if missing:
         print(f"\n⚠️  请安装缺失的依赖项:")
         for module, desc in missing:
-            if module != 'focused_data_cleaner':
+            if module not in ['src.data_cleaner']:
                 print(f"   pip3 install {module}")
         return False
     
@@ -82,7 +85,7 @@ def test_data_connection():
     print("\n🔗 测试数据连接...")
     
     try:
-        from focused_data_cleaner import FocusedDataCleaner
+        from src.data_cleaner import FocusedDataCleaner
         cleaner = FocusedDataCleaner()
         
         # 快速测试连接

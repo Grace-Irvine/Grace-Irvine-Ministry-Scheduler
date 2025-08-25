@@ -40,19 +40,19 @@ read -p "请输入选择 (1-5): " choice
 
 case $choice in
     1)
-        python generate_notifications.py weekly
+        python src/notification_generator.py weekly
         ;;
     2)
-        python generate_notifications.py sunday
+        python src/notification_generator.py sunday
         ;;
     3)
-        python generate_notifications.py monthly
+        python src/notification_generator.py monthly
         ;;
     4)
-        python generate_notifications.py all
+        python src/notification_generator.py all
         ;;
     5)
-        python check_data.py
+        python src/data_validator.py
         ;;
     *)
         echo "❌ 无效选择"

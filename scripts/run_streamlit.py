@@ -31,7 +31,7 @@ def main():
         sys.exit(1)
     
     # 检查必要文件
-    project_root = Path(__file__).parent
+    project_root = Path(__file__).parent.parent
     streamlit_app = project_root / "streamlit_app.py"
     
     if not streamlit_app.exists():

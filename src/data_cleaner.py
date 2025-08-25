@@ -23,7 +23,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 # 项目根目录
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
 @dataclass

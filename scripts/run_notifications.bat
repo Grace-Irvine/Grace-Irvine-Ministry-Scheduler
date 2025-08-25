@@ -38,15 +38,15 @@ echo.
 set /p choice="请输入选择 (1-5): "
 
 if "%choice%"=="1" (
-    python generate_notifications.py weekly
+    python src\notification_generator.py weekly
 ) else if "%choice%"=="2" (
-    python generate_notifications.py sunday
+    python src\notification_generator.py sunday
 ) else if "%choice%"=="3" (
-    python generate_notifications.py monthly
+    python src\notification_generator.py monthly
 ) else if "%choice%"=="4" (
-    python generate_notifications.py all
+    python src\notification_generator.py all
 ) else if "%choice%"=="5" (
-    python check_data.py
+    python src\data_validator.py
 ) else (
     echo 无效选择
 )
