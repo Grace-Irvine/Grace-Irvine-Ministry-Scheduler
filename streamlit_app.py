@@ -16,14 +16,23 @@ from pathlib import Path
 import json
 import io
 
+# 云环境配置（必须在其他导入之前）
+try:
+    import streamlit_cloud_config  # 自动设置云环境
+except ImportError:
+    pass
+
 # 导入我们的数据清洗模块
 from src.data_cleaner import FocusedDataCleaner
 from src.template_manager import NotificationTemplateManager
 from src.scheduler import GoogleSheetsExtractor, NotificationGenerator, MinistryAssignment
-from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
+# 本地环境的环境变量加载
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # 页面配置
 st.set_page_config(
