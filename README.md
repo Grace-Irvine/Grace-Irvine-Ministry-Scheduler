@@ -12,6 +12,7 @@
 
 - **📊 数据管理**: 从 Google Sheets 自动提取和清洗排班数据
 - **📝 通知生成**: 自动生成微信群通知模板（周三确认、周六提醒、月度总览）
+- **📧 邮件通知**: 支持自动发送HTML格式的邮件通知给服事同工
 - **🔍 数据分析**: 实时数据质量监控和统计分析
 - **📅 排程预览**: 查看近期排班安排，智能识别冲突和空缺
 - **📥 数据导出**: 支持 Excel 和 CSV 格式导出
@@ -24,11 +25,15 @@ Grace-Irvine-Ministry-Scheduler/
 │   ├── data_cleaner.py      # 数据清洗模块
 │   ├── scheduler.py         # 排班调度模块
 │   ├── notification_generator.py  # 通知生成模块
+│   ├── email_sender.py      # 邮件发送模块
 │   └── data_validator.py    # 数据验证模块
 ├── scripts/                  # 执行脚本
 │   ├── run_streamlit.py     # Web应用启动脚本
 │   ├── run_notifications.sh # 通知生成脚本(Mac/Linux)
-│   └── run_notifications.bat # 通知生成脚本(Windows)
+│   ├── run_notifications.bat # 通知生成脚本(Windows)
+│   ├── send_email_notifications.py # 邮件发送脚本
+│   ├── send_email_notifications.sh # 邮件发送脚本(Mac/Linux)
+│   └── send_email_notifications.bat # 邮件发送脚本(Windows)
 ├── tests/                    # 测试文件
 │   ├── test_simple.py       # 基础功能测试
 │   ├── test_nearby_preview.py # 预览功能测试
@@ -111,6 +116,64 @@ scripts\run_notifications.bat
 ### 3. 月度总览通知
 
 月初发送当月完整排班表
+
+## 📧 邮件通知功能
+
+### 配置邮件发送
+
+1. **设置环境变量**
+
+在项目根目录创建 `.env` 文件：
+
+```bash
+# 发件人邮箱
+SENDER_EMAIL=jonathanjing@graceirvine.org
+SENDER_NAME=Grace Irvine 事工协调
+
+# Gmail应用专用密码
+EMAIL_PASSWORD=your_app_password_here
+
+# 收件人列表（可选）
+RECIPIENT_EMAILS=email1@example.com,email2@example.com
+```
+
+2. **获取Gmail应用专用密码**
+
+- 访问 [Google账户安全设置](https://myaccount.google.com/security)
+- 启用两步验证
+- 生成应用专用密码：[https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+
+3. **测试邮件功能**
+
+```bash
+# 测试邮件发送
+python test_email_notifications.py
+
+# 发送测试通知
+python scripts/send_email_notifications.py test
+```
+
+### 发送邮件通知
+
+```bash
+# Mac/Linux
+./scripts/send_email_notifications.sh
+
+# Windows
+scripts\send_email_notifications.bat
+
+# 或直接使用Python
+python scripts/send_email_notifications.py weekly  # 周三确认
+python scripts/send_email_notifications.py sunday  # 周六提醒
+```
+
+### 邮件模板
+
+系统提供精美的HTML邮件模板：
+- `templates/email/weekly_confirmation.html` - 周三确认通知
+- `templates/email/sunday_reminder.html` - 周六提醒通知
+
+详细配置说明请参考 [邮件设置指南](docs/guides/EMAIL_SETUP_GUIDE.md)
 
 ## 🛠️ 开发指南
 
