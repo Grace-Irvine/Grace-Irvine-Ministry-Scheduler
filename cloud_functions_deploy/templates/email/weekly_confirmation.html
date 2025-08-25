@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ church_name }} - 本周事工安排确认</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #2E5984 0%, #4A90B8 100%);
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .header p {
+            margin: 5px 0 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .greeting {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .summary-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #F4B942;
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .summary-box h3 {
+            margin: 0 0 10px 0;
+            color: #2E5984;
+            font-size: 18px;
+        }
+        .summary-stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .stat-item {
+            flex: 1;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2E5984;
+            display: block;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .schedule-table th {
+            background-color: #2E5984;
+            color: #ffffff;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .schedule-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 14px;
+        }
+        .schedule-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .schedule-table tr:hover {
+            background-color: #f0f8ff;
+        }
+        .date-cell {
+            font-weight: bold;
+            color: #2E5984;
+            min-width: 100px;
+        }
+        .time-cell {
+            color: #666;
+            min-width: 80px;
+        }
+        .roles-cell {
+            max-width: 300px;
+        }
+        .role-item {
+            display: inline-block;
+            background-color: #e9ecef;
+            padding: 3px 8px;
+            margin: 2px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #495057;
+        }
+        .important-note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+        }
+        .important-note h4 {
+            margin: 0 0 10px 0;
+            color: #856404;
+        }
+        .action-buttons {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 0 10px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background-color: #2E5984;
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            background-color: #1e3a5f;
+        }
+        .btn-secondary {
+            background-color: #F4B942;
+            color: #ffffff;
+        }
+        .btn-secondary:hover {
+            background-color: #d99e2c;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        @media (max-width: 600px) {
+            .container {
+                margin: 0;
+                box-shadow: none;
+            }
+            .header, .content, .footer {
+                padding: 20px 15px;
+            }
+            .summary-stats {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .schedule-table {
+                font-size: 12px;
+            }
+            .schedule-table th,
+            .schedule-table td {
+                padding: 8px;
+            }
+            .btn {
+                display: block;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ church_name }}</h1>
+            <p>本周事工安排确认</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <div class="greeting">
+                亲爱的事工团队同工们，主内平安！
+            </div>
+
+            <!-- Summary Box -->
+            <div class="summary-box">
+                <h3>📅 {{ week_range }} 事工安排</h3>
+                <p>请确认您的服事安排，如有冲突请及时联系协调。</p>
+            </div>
+
+            <!-- Statistics -->
+            <div class="summary-stats">
+                <div class="stat-item">
+                    <span class="stat-number">{{ total_services }}</span>
+                    <span class="stat-label">场聚会</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">{{ total_assignments }}</span>
+                    <span class="stat-label">个服事</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">{{ unique_volunteers }}</span>
+                    <span class="stat-label">位同工</span>
+                </div>
+            </div>
+
+            <!-- Schedule Table -->
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>时间</th>
+                        <th>地点</th>
+                        <th>服事安排</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for schedule in week_schedules %}
+                    <tr>
+                        <td class="date-cell">
+                            {{ schedule.date | chinese_date }}<br>
+                            <small>{{ schedule.date | chinese_weekday }}</small>
+                        </td>
+                        <td class="time-cell">
+                            {{ schedule.time | chinese_time }}
+                        </td>
+                        <td>{{ schedule.location }}</td>
+                        <td class="roles-cell">
+                            {% for service_type, person in schedule.roles.items() %}
+                            <span class="role-item">{{ service_type }}: {{ person }}</span>
+                            {% endfor %}
+                            {% if schedule.notes %}
+                            <br><small style="color: #666;">备注: {{ schedule.notes }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Important Notice -->
+            <div class="important-note">
+                <h4>⚠️ 重要提醒</h4>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>请在<strong>周五晚上</strong>之前确认或调换您的服事安排</li>
+                    <li>如需调换，请直接联系其他同工协调，并通知协调员</li>
+                    <li>请提前10-15分钟到达，为服事做好准备</li>
+                    <li>如有紧急情况无法服事，请立即联系协调员</li>
+                </ul>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <a href="#" class="btn btn-primary">✅ 确认安排</a>
+                <a href="#" class="btn btn-secondary">🔄 申请调换</a>
+            </div>
+
+            <!-- Volunteer List -->
+            {% if volunteer_list %}
+            <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+                <h4 style="margin: 0 0 10px 0; color: #2E5984;">📋 本周服事同工名单</h4>
+                <p style="margin: 0; font-size: 14px; color: #666;">
+                    {{ volunteer_list | join(', ') }}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>{{ church_name }}</strong></p>
+            <p>愿神祝福我们的服事，荣耀归主名！</p>
+            <p>此邮件由事工管理系统自动发送 · {{ generated_at.strftime('%Y年%m月%d日 %H:%M') }}</p>
+        </div>
+    </div>
+</body>
+</html>
