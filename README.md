@@ -119,6 +119,8 @@ scripts\run_notifications.bat
 
 ## 📧 邮件通知功能
 
+邮件通知专为事工负责人设计，包含完整的微信群通知模板，方便直接复制粘贴到微信群。
+
 ### 配置邮件发送
 
 1. **设置环境变量**
@@ -169,9 +171,15 @@ python scripts/send_email_notifications.py sunday  # 周六提醒
 
 ### 邮件模板
 
-系统提供精美的HTML邮件模板：
-- `templates/email/weekly_confirmation.html` - 周三确认通知
-- `templates/email/sunday_reminder.html` - 周六提醒通知
+系统提供专门的微信群通知邮件模板：
+- `templates/email/weekly_confirmation_wechat.html` - 周三确认通知（含微信群模板）
+- `templates/email/sunday_reminder_wechat.html` - 周六提醒通知（含微信群模板）
+
+**主要功能：**
+- 📱 一键复制微信群通知内容
+- 📋 详细的发送指导说明
+- 📊 服事安排统计信息
+- ⏰ 最佳发送时间提醒
 
 详细配置说明请参考 [邮件设置指南](docs/guides/EMAIL_SETUP_GUIDE.md)
 

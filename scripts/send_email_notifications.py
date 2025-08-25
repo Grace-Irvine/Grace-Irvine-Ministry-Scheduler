@@ -91,24 +91,7 @@ class EmailNotificationService:
         # 目前返回所有收件人
         return self.recipients
     
-    def _assignment_to_schedule_dict(
-        self, 
-        assignment: MinistryAssignment
-    ) -> Dict[str, Any]:
-        """将MinistryAssignment转换为邮件模板所需的字典格式"""
-        return {
-            'date': assignment.date,
-            'time': '10:00',  # 默认时间
-            'location': 'Grace Irvine 教会',
-            'roles': {
-                '音控': assignment.audio_tech or '待安排',
-                '屏幕': assignment.screen_operator or '待安排',
-                '摄像/导播': assignment.camera_operator or '待安排',
-                'ProPresenter制作': assignment.propresenter or '待安排',
-                '视频剪辑': assignment.video_editor
-            },
-            'notes': ''  # 可以从其他地方获取备注
-        }
+
     
     def send_weekly_confirmation(self, test_mode: bool = False):
         """发送周三确认通知
@@ -126,9 +109,6 @@ class EmailNotificationService:
         if not assignment:
             logger.warning("未找到本周的事工安排")
             return False
-        
-        # 转换数据格式
-        schedule = self._assignment_to_schedule_dict(assignment)
         
         # 获取收件人
         recipients = self._get_recipients_for_assignment(assignment)
@@ -150,11 +130,11 @@ class EmailNotificationService:
             print(wechat_msg)
             return True
         
-        # 发送邮件
+        # 发送邮件（直接传递NotificationGenerator实例）
         try:
             success = self.email_sender.send_weekly_confirmation(
                 recipients=recipients,
-                week_schedules=[schedule]
+                notification_generator=self.notification_generator
             )
             
             if success:
@@ -187,9 +167,6 @@ class EmailNotificationService:
             logger.warning("未找到明日的事工安排")
             return False
         
-        # 转换数据格式
-        schedule = self._assignment_to_schedule_dict(assignment)
-        
         # 获取收件人
         recipients = self._get_recipients_for_assignment(assignment)
         
@@ -210,11 +187,11 @@ class EmailNotificationService:
             print(wechat_msg)
             return True
         
-        # 发送邮件
+        # 发送邮件（直接传递NotificationGenerator实例）
         try:
             success = self.email_sender.send_sunday_reminder(
                 recipients=recipients,
-                sunday_schedule=schedule
+                notification_generator=self.notification_generator
             )
             
             if success:

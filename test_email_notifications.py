@@ -142,10 +142,50 @@ def test_weekly_confirmation_email():
         }
     ]
     
+    # 创建模拟的NotificationGenerator
+    from src.scheduler import GoogleSheetsExtractor, NotificationGenerator
+    
+    # 使用模拟数据，如果无法连接Google Sheets则使用默认配置
+    try:
+        spreadsheet_id = os.getenv("GOOGLE_SPREADSHEET_ID", "test_id")
+        extractor = GoogleSheetsExtractor(spreadsheet_id)
+        generator = NotificationGenerator(extractor)
+    except:
+        # 如果无法连接，创建一个模拟的generator
+        class MockExtractor:
+            def get_current_week_assignment(self):
+                from src.scheduler import MinistryAssignment
+                return MinistryAssignment(
+                    date=test_schedules[0]['date'],
+                    audio_tech='张三',
+                    screen_operator='李四', 
+                    camera_operator='王五',
+                    propresenter='赵六',
+                    video_editor='靖铮'
+                )
+        
+        class MockGenerator:
+            def __init__(self):
+                self.extractor = MockExtractor()
+            
+            def generate_weekly_confirmation(self):
+                assignment = self.extractor.get_current_week_assignment()
+                return f"""【本周{assignment.date.month}月{assignment.date.day}日主日事工安排提醒】🕊️
+
+• 音控：{assignment.audio_tech}
+• 屏幕：{assignment.screen_operator}
+• 摄像/导播：{assignment.camera_operator}
+• Propresenter 制作：{assignment.propresenter}
+• 视频剪辑：{assignment.video_editor}
+
+请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏"""
+        
+        generator = MockGenerator()
+    
     print(f"发送周三确认通知到: {recipient.email}")
     if sender.send_weekly_confirmation(
         recipients=[recipient],
-        week_schedules=test_schedules
+        notification_generator=generator
     ):
         print("✅ 周三确认通知邮件发送成功！")
         return True
@@ -181,10 +221,49 @@ def test_sunday_reminder_email():
         'notes': '请携带设备检查清单'
     }
     
+    # 创建模拟的NotificationGenerator
+    from src.scheduler import GoogleSheetsExtractor, NotificationGenerator
+    
+    # 使用模拟数据，如果无法连接Google Sheets则使用默认配置
+    try:
+        spreadsheet_id = os.getenv("GOOGLE_SPREADSHEET_ID", "test_id")
+        extractor = GoogleSheetsExtractor(spreadsheet_id)
+        generator = NotificationGenerator(extractor)
+    except:
+        # 如果无法连接，创建一个模拟的generator
+        class MockExtractor:
+            def get_next_sunday_assignment(self):
+                from src.scheduler import MinistryAssignment
+                return MinistryAssignment(
+                    date=test_schedule['date'],
+                    audio_tech='Jonathan Jing',
+                    screen_operator='李四',
+                    camera_operator='王五',
+                    propresenter='赵六',
+                    video_editor='靖铮'
+                )
+        
+        class MockGenerator:
+            def __init__(self):
+                self.extractor = MockExtractor()
+            
+            def generate_sunday_reminder(self):
+                assignment = self.extractor.get_next_sunday_assignment()
+                return f"""【主日服事提醒】✨
+明天 8:30布置/ 9:00彩排 / 10:00 正式敬拜  
+请各位同工提前到场：  
+- 音控：{assignment.audio_tech} 9:00到，随敬拜团排练
+- 屏幕：{assignment.screen_operator} 9:00到，随敬拜团排练
+- 摄像/导播: {assignment.camera_operator} 9:30到，检查预设机位
+
+愿主同在，出入平安。若临时不适请第一时间私信我。🙌"""
+        
+        generator = MockGenerator()
+    
     print(f"发送周六提醒通知到: {recipient.email}")
     if sender.send_sunday_reminder(
         recipients=[recipient],
-        sunday_schedule=test_schedule
+        notification_generator=generator
     ):
         print("✅ 周六提醒通知邮件发送成功！")
         return True
@@ -242,7 +321,7 @@ def test_with_real_data():
             print(f"\n发送真实数据测试邮件到: {recipient.email}")
             if sender.send_weekly_confirmation(
                 recipients=[recipient],
-                week_schedules=[schedule]
+                notification_generator=generator
             ):
                 print("✅ 真实数据测试邮件发送成功！")
                 return True
