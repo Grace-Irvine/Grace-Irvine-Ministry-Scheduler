@@ -18,6 +18,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from dataclasses import dataclass
 from pathlib import Path
+import yaml
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,12 +37,44 @@ class MinistryAssignment:
 class GoogleSheetsExtractor:
     """Google Sheets 数据提取器"""
     
-    def __init__(self, spreadsheet_id: str, service_account_path: str = "configs/service_account.json"):
+    def __init__(self, spreadsheet_id: str, service_account_path: str = "configs/service_account.json", config_path: str = "configs/config.yaml"):
         self.spreadsheet_id = spreadsheet_id
         self.service_account_path = service_account_path
+        self.config_path = config_path
         self.client = None
         self.spreadsheet = None
+        self.config = None
+        self._load_config()
         self._setup_client()
+    
+    def _load_config(self):
+        """加载配置文件"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                self.config = yaml.safe_load(f)
+            logger.info(f"Successfully loaded config from {self.config_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load config from {self.config_path}: {e}")
+            # 使用默认配置
+            self.config = {
+                'sheet_name': '总表',
+                'columns': {
+                    'date': 'A',
+                    'roles': [
+                        {'key': 'B', 'service_type': '音控'},
+                        {'key': 'C', 'service_type': '屏幕'},
+                        {'key': 'D', 'service_type': '摄像/导播'},
+                        {'key': 'E', 'service_type': 'ProPresenter制作'}
+                    ]
+                }
+            }
+    
+    def _column_to_index(self, column: str) -> int:
+        """将列字母转换为索引 (A=0, B=1, ..., Z=25, AA=26, etc.)"""
+        result = 0
+        for char in column.upper():
+            result = result * 26 + (ord(char) - ord('A') + 1)
+        return result - 1
     
     def _setup_client(self):
         """初始化 Google Sheets 客户端"""
@@ -71,8 +104,11 @@ class GoogleSheetsExtractor:
             logger.error(f"Failed to setup Google Sheets client: {e}")
             raise
     
-    def get_raw_data(self, sheet_name: str = "总表") -> List[List[str]]:
+    def get_raw_data(self, sheet_name: str = None) -> List[List[str]]:
         """获取原始表格数据"""
+        if sheet_name is None:
+            sheet_name = self.config.get('sheet_name', '总表')
+        
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
             values = worksheet.get_all_values()
@@ -82,15 +118,10 @@ class GoogleSheetsExtractor:
             logger.error(f"Failed to get data from sheet '{sheet_name}': {e}")
             raise
     
-    def parse_ministry_data(self, sheet_name: str = "总表") -> List[MinistryAssignment]:
+    def parse_ministry_data(self, sheet_name: str = None) -> List[MinistryAssignment]:
         """解析事工数据
         
-        假设表格结构（根据实际情况调整列索引）:
-        A: 日期
-        B: 音控
-        C: 屏幕
-        D: 摄像/导播
-        E: Propresenter制作
+        根据config.yaml中的列映射解析数据
         """
         raw_data = self.get_raw_data(sheet_name)
         
@@ -100,15 +131,33 @@ class GoogleSheetsExtractor:
         
         assignments = []
         
+        # 获取列配置
+        columns_config = self.config.get('columns', {})
+        date_column = columns_config.get('date', 'A')
+        roles_config = columns_config.get('roles', [])
+        
+        # 将列字母转换为索引
+        date_index = self._column_to_index(date_column)
+        
+        # 创建角色映射
+        role_mappings = {}
+        for role in roles_config:
+            column_key = role.get('key', '')
+            service_type = role.get('service_type', '')
+            if column_key and service_type:
+                column_index = self._column_to_index(column_key)
+                role_mappings[service_type] = column_index
+        
         # 跳过标题行，从第二行开始处理
         for i, row in enumerate(raw_data[1:], start=2):
             try:
                 # 确保行有足够的列
-                while len(row) < 6:
+                max_index = max([date_index] + list(role_mappings.values())) if role_mappings else date_index
+                while len(row) <= max_index:
                     row.append("")
                 
-                # 解析日期 (A列)
-                date_str = row[0].strip() if row[0] else ""
+                # 解析日期
+                date_str = row[date_index].strip() if len(row) > date_index and row[date_index] else ""
                 if not date_str:
                     continue
                 
@@ -117,13 +166,13 @@ class GoogleSheetsExtractor:
                     logger.warning(f"Could not parse date in row {i}: {date_str}")
                     continue
                 
-                # 解析各个角色 (根据实际列位置调整)
+                # 解析各个角色
                 assignment = MinistryAssignment(
                     date=parsed_date,
-                    audio_tech=self._clean_name(row[1]),        # B列 - 音控
-                    screen_operator=self._clean_name(row[2]),   # C列 - 屏幕
-                    camera_operator=self._clean_name(row[3]),   # D列 - 摄像/导播
-                    propresenter=self._clean_name(row[4]),      # E列 - Propresenter制作
+                    audio_tech=self._clean_name(row[role_mappings.get('音控', 0)]) if '音控' in role_mappings else "",
+                    screen_operator=self._clean_name(row[role_mappings.get('屏幕', 0)]) if '屏幕' in role_mappings else "",
+                    camera_operator=self._clean_name(row[role_mappings.get('导播/摄影', 0)]) if '导播/摄影' in role_mappings else "",
+                    propresenter=self._clean_name(row[role_mappings.get('ProPresenter播放', 0)]) if 'ProPresenter播放' in role_mappings else "",
                     video_editor="靖铮"  # 固定值
                 )
                 

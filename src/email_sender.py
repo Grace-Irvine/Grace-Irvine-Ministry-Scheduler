@@ -240,90 +240,141 @@ class EmailSender:
     def send_weekly_confirmation(
         self,
         recipients: List[EmailRecipient],
-        week_schedules: List[Dict[str, Any]]
+        notification_generator,
+        wechat_message: str = ""
     ) -> bool:
-        """发送周三确认通知邮件
+        """发送周三确认通知邮件（包含微信群模板）
         
         Args:
             recipients: 收件人列表
-            week_schedules: 本周的服事安排
+            notification_generator: NotificationGenerator实例
+            wechat_message: 微信群通知文本（如果为空则自动生成）
             
         Returns:
             是否发送成功
         """
+        # 如果没有提供微信群消息，则使用NotificationGenerator生成
+        if not wechat_message:
+            wechat_message = notification_generator.generate_weekly_confirmation()
+        
+        # 获取本周安排用于统计
+        assignment = notification_generator.extractor.get_current_week_assignment()
+        
         # 准备模板上下文
         context = {
-            'week_schedules': week_schedules,
-            'total_services': len(week_schedules),
-            'total_assignments': sum(len(s.get('roles', {})) for s in week_schedules),
-            'unique_volunteers': len(set(
-                person 
-                for s in week_schedules 
-                for person in s.get('roles', {}).values() 
-                if person
-            )),
+            'wechat_message': wechat_message,
             'week_range': self._get_week_range(),
-            'volunteer_list': list(set(
-                person 
-                for s in week_schedules 
-                for person in s.get('roles', {}).values() 
-                if person
-            ))
+            'assignment': assignment
         }
         
-        # 渲染模板
-        html_content = self.render_template('weekly_confirmation.html', context)
+        # 如果有具体安排，添加统计信息
+        if assignment:
+            roles = {
+                '音控': assignment.audio_tech,
+                '屏幕': assignment.screen_operator,
+                '摄像/导播': assignment.camera_operator,
+                'ProPresenter制作': assignment.propresenter,
+                '视频剪辑': assignment.video_editor
+            }
+            
+            # 过滤出有人员的角色
+            active_roles = {k: v for k, v in roles.items() if v}
+            
+            context.update({
+                'total_services': 1,
+                'total_assignments': len(active_roles),
+                'unique_volunteers': len(set(active_roles.values())),
+                'volunteer_list': list(set(active_roles.values())),
+                'roles': active_roles
+            })
+        else:
+            context.update({
+                'total_services': 0,
+                'total_assignments': 0,
+                'unique_volunteers': 0,
+                'volunteer_list': [],
+                'roles': {}
+            })
         
-        # 生成纯文本版本
-        text_content = self._generate_weekly_text(week_schedules)
+        # 渲染模板
+        html_content = self.render_template('weekly_confirmation_wechat.html', context)
         
         # 发送邮件
-        subject = f"【本周事工安排确认】{context['week_range']}"
+        subject = f"【微信群通知模板】本周事工安排确认 - {context['week_range']}"
         return self.send_email(
             recipients=recipients,
             subject=subject,
             html_content=html_content,
-            text_content=text_content
+            text_content=wechat_message
         )
     
     def send_sunday_reminder(
         self,
         recipients: List[EmailRecipient],
-        sunday_schedule: Dict[str, Any]
+        notification_generator,
+        wechat_message: str = ""
     ) -> bool:
-        """发送周六提醒通知邮件
+        """发送周六提醒通知邮件（包含微信群模板）
         
         Args:
             recipients: 收件人列表
-            sunday_schedule: 明日的服事安排
+            notification_generator: NotificationGenerator实例
+            wechat_message: 微信群通知文本（如果为空则自动生成）
             
         Returns:
             是否发送成功
         """
+        # 如果没有提供微信群消息，则使用NotificationGenerator生成
+        if not wechat_message:
+            wechat_message = notification_generator.generate_sunday_reminder()
+        
+        # 获取明日安排
+        assignment = notification_generator.extractor.get_next_sunday_assignment()
+        
         # 准备模板上下文
         tomorrow = date.today() + timedelta(days=1)
         context = {
-            'sunday_schedule': sunday_schedule,
+            'wechat_message': wechat_message,
             'service_date': tomorrow,
             'service_time': '10:00',
             'arrival_time': '09:30',
             'location': 'Grace Irvine 教会',
-            'assignments_count': len(sunday_schedule.get('roles', {}))
+            'assignment': assignment
         }
         
-        # 渲染模板
-        html_content = self.render_template('sunday_reminder.html', context)
+        # 如果有具体安排，添加详细信息
+        if assignment:
+            roles = {
+                '音控': assignment.audio_tech,
+                '屏幕': assignment.screen_operator,
+                '摄像/导播': assignment.camera_operator,
+                'ProPresenter制作': assignment.propresenter,
+                '视频剪辑': assignment.video_editor
+            }
+            
+            # 过滤出有人员的角色
+            active_roles = {k: v for k, v in roles.items() if v}
+            
+            context.update({
+                'assignments_count': len(active_roles),
+                'roles': active_roles
+            })
+        else:
+            context.update({
+                'assignments_count': 0,
+                'roles': {}
+            })
         
-        # 生成纯文本版本
-        text_content = self._generate_sunday_text(sunday_schedule)
+        # 渲染模板
+        html_content = self.render_template('sunday_reminder_wechat.html', context)
         
         # 发送邮件
-        subject = f"【明日主日服事提醒】{self._format_chinese_date(tomorrow)}"
+        subject = f"【微信群通知模板】明日主日服事提醒 - {self._format_chinese_date(tomorrow)}"
         return self.send_email(
             recipients=recipients,
             subject=subject,
             html_content=html_content,
-            text_content=text_content
+            text_content=wechat_message
         )
     
     def _get_week_range(self) -> str:
