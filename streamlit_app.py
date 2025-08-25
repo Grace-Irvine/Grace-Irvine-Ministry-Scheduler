@@ -187,6 +187,7 @@ def show_data_overview(data_result):
     # 数据统计
     stats = data_result['stats']
     summary = data_result['summary_report']
+    schedules = data_result['schedules']
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -228,6 +229,10 @@ def show_data_overview(data_result):
             st.metric("🖥️ ProPresenter播放", role_stats.get('ProPresenter播放', 0))
             st.metric("🔄 ProPresenter更新", role_stats.get('ProPresenter更新', 0))
     
+    # 周程安排概览
+    if schedules:
+        show_weekly_schedule_overview(schedules)
+    
     # 日期范围
     if summary.get('date_range'):
         st.info(f"📅 **数据范围**: {summary['date_range']}")
@@ -237,6 +242,324 @@ def show_data_overview(data_result):
         st.warning(f"⚠️ 发现 {stats['invalid_dates']} 个无效日期")
     else:
         st.success("✅ 数据质量良好，日期格式正确")
+
+def get_sunday_of_week(target_date):
+    """获取指定日期所在周的周日日期"""
+    days_since_sunday = target_date.weekday() + 1  # Monday=0 -> 1, Sunday=6 -> 0
+    if days_since_sunday == 7:  # 如果是周日
+        days_since_sunday = 0
+    return target_date - timedelta(days=days_since_sunday)
+
+def show_weekly_schedule_overview(schedules):
+    """显示周程安排概览"""
+    st.markdown("### 📅 周程安排概览")
+    
+    # 获取当前日期和相关周日
+    today = date.today()
+    current_sunday = get_sunday_of_week(today)
+    
+    # 计算目标周日期（前两周到未来几周）
+    target_sundays = []
+    for i in range(-2, 8):  # 前2周 + 当前周 + 未来7周 = 10周
+        sunday = current_sunday + timedelta(weeks=i)
+        target_sundays.append(sunday)
+    
+    # 按周日分组排程数据
+    schedule_by_sunday = {}
+    for schedule in schedules:
+        sunday = get_sunday_of_week(schedule.date)
+        if sunday in target_sundays:
+            schedule_by_sunday[sunday] = schedule
+    
+    # 显示周程概览表格
+    overview_data = []
+    for sunday in target_sundays:
+        week_label = get_week_label(sunday, today)
+        schedule = schedule_by_sunday.get(sunday)
+        
+        if schedule:
+            assignments = schedule.get_all_assignments()
+            row = {
+                '周次': week_label,
+                '日期': sunday.strftime('%Y-%m-%d'),
+                '音控': assignments.get('音控', ''),
+                '导播/摄影': assignments.get('导播/摄影', ''),
+                'ProPresenter播放': assignments.get('ProPresenter播放', ''),
+                'ProPresenter更新': assignments.get('ProPresenter更新', ''),
+                '状态': get_schedule_status(sunday, today)
+            }
+        else:
+            row = {
+                '周次': week_label,
+                '日期': sunday.strftime('%Y-%m-%d'),
+                '音控': '',
+                '导播/摄影': '',
+                'ProPresenter播放': '',
+                'ProPresenter更新': '',
+                '状态': '暂无安排'
+            }
+        
+        overview_data.append(row)
+    
+    # 创建 DataFrame 并显示
+    if overview_data:
+        df_overview = pd.DataFrame(overview_data)
+        
+        # 使用 Streamlit 的表格显示，带有条件格式
+        st.dataframe(
+            df_overview,
+            use_container_width=True,
+            height=400,
+            column_config={
+                '周次': st.column_config.TextColumn('周次', width='medium'),
+                '日期': st.column_config.DateColumn('日期', format='YYYY-MM-DD'),
+                '音控': st.column_config.TextColumn('🎤 音控'),
+                '导播/摄影': st.column_config.TextColumn('📹 导播/摄影'),
+                'ProPresenter播放': st.column_config.TextColumn('🖥️ PP播放'),
+                'ProPresenter更新': st.column_config.TextColumn('🔄 PP更新'),
+                '状态': st.column_config.TextColumn('状态', width='small')
+            }
+        )
+        
+        # 显示统计信息
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            arranged_weeks = sum(1 for row in overview_data if any([
+                row['音控'], row['导播/摄影'], row['ProPresenter播放'], row['ProPresenter更新']
+            ]))
+            st.metric("📋 已安排周数", f"{arranged_weeks}/{len(overview_data)}")
+        
+        with col2:
+            past_weeks = sum(1 for row in overview_data if row['状态'] == '已完成')
+            st.metric("✅ 已完成", past_weeks)
+        
+        with col3:
+            future_weeks = sum(1 for row in overview_data if row['状态'] in ['本周', '未来'])
+            st.metric("📅 待进行", future_weeks)
+        
+        # 显示重点提醒
+        show_schedule_alerts(overview_data, today)
+
+def get_week_label(sunday, today):
+    """获取周次标签"""
+    current_sunday = get_sunday_of_week(today)
+    week_diff = (sunday - current_sunday).days // 7
+    
+    if week_diff == -2:
+        return "前两周"
+    elif week_diff == -1:
+        return "上周"
+    elif week_diff == 0:
+        return "本周"
+    elif week_diff == 1:
+        return "下周"
+    elif week_diff == 2:
+        return "下下周"
+    elif week_diff > 2:
+        return f"未来第{week_diff}周"
+    else:
+        return f"过去第{abs(week_diff)}周"
+
+def get_schedule_status(sunday, today):
+    """获取排程状态"""
+    if sunday < get_sunday_of_week(today):
+        return "已完成"
+    elif sunday == get_sunday_of_week(today):
+        return "本周"
+    else:
+        return "未来"
+
+def show_schedule_alerts(overview_data, today):
+    """显示排程提醒"""
+    alerts = []
+    
+    # 检查未安排的周次
+    unscheduled = [row for row in overview_data if row['状态'] == '暂无安排' and row['状态'] != '已完成']
+    if unscheduled:
+        alert_dates = [row['日期'] for row in unscheduled[:3]]  # 只显示前3个
+        alerts.append(f"⚠️ 发现 {len(unscheduled)} 个未安排的周次: {', '.join(alert_dates)}")
+    
+    # 检查本周和下周的安排
+    this_week = next((row for row in overview_data if row['周次'] == '本周'), None)
+    next_week = next((row for row in overview_data if row['周次'] == '下周'), None)
+    
+    if this_week and not any([this_week['音控'], this_week['导播/摄影'], this_week['ProPresenter播放']]):
+        alerts.append("🚨 本周主日暂无完整安排，请尽快确认！")
+    
+    if next_week and not any([next_week['音控'], next_week['导播/摄影'], next_week['ProPresenter播放']]):
+        alerts.append("⏰ 下周主日安排不完整，建议提前准备")
+    
+    # 检查人员重复安排
+    for row in overview_data:
+        assignments = [row['音控'], row['导播/摄影'], row['ProPresenter播放'], row['ProPresenter更新']]
+        assignments = [a for a in assignments if a]  # 移除空值
+        if len(assignments) != len(set(assignments)):  # 有重复
+            duplicates = [a for a in set(assignments) if assignments.count(a) > 1]
+            alerts.append(f"👥 {row['日期']} 发现重复安排: {', '.join(duplicates)}")
+    
+    # 显示提醒
+    if alerts:
+        st.markdown("### 🔔 重要提醒")
+        for alert in alerts:
+            if "🚨" in alert:
+                st.error(alert)
+            elif "⏰" in alert:
+                st.warning(alert)
+            else:
+                st.info(alert)
+    else:
+        st.success("✅ 排程安排良好，暂无需要特别关注的问题")
+
+def show_nearby_schedule_preview(data_result):
+    """显示当前日期附近的排程预览"""
+    st.markdown("### 📋 近期排程预览")
+    
+    schedules = data_result['schedules']
+    if not schedules:
+        st.info("暂无排程数据")
+        return
+    
+    today = date.today()
+    
+    # 获取当前日期前后4周的数据（共8周）
+    start_date = today - timedelta(weeks=2)
+    end_date = today + timedelta(weeks=6)
+    
+    # 过滤近期数据
+    nearby_schedules = [
+        s for s in schedules 
+        if start_date <= s.date <= end_date
+    ]
+    
+    if not nearby_schedules:
+        st.warning("未找到近期的排程数据")
+        return
+    
+    # 转换为显示格式
+    preview_data = []
+    for schedule in sorted(nearby_schedules, key=lambda x: x.date):
+        # 确定状态和样式
+        if schedule.date < today:
+            status = "已完成"
+            status_emoji = "✅"
+        elif schedule.date == today:
+            status = "今天"
+            status_emoji = "📍"
+        elif schedule.date <= today + timedelta(days=7):
+            status = "本周"
+            status_emoji = "🔥"
+        elif schedule.date <= today + timedelta(days=14):
+            status = "下周"
+            status_emoji = "⏰"
+        else:
+            status = "未来"
+            status_emoji = "📅"
+        
+        assignments = schedule.get_all_assignments()
+        
+        preview_data.append({
+            '状态': f"{status_emoji} {status}",
+            '日期': schedule.date.strftime('%Y-%m-%d'),
+            '星期': ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][schedule.date.weekday()],
+            '音控': assignments.get('音控', ''),
+            '导播/摄影': assignments.get('导播/摄影', ''),
+            'ProPresenter播放': assignments.get('ProPresenter播放', ''),
+            'ProPresenter更新': assignments.get('ProPresenter更新', ''),
+        })
+    
+    # 创建 DataFrame 并显示
+    df_preview = pd.DataFrame(preview_data)
+    
+    # 使用 Streamlit 的数据编辑器显示，支持条件格式
+    st.dataframe(
+        df_preview,
+        use_container_width=True,
+        height=min(400, len(preview_data) * 35 + 100),  # 动态高度
+        column_config={
+            '状态': st.column_config.TextColumn('状态', width='small'),
+            '日期': st.column_config.DateColumn('日期', format='YYYY-MM-DD'),
+            '星期': st.column_config.TextColumn('星期', width='small'),
+            '音控': st.column_config.TextColumn('🎤 音控'),
+            '导播/摄影': st.column_config.TextColumn('📹 导播/摄影'),
+            'ProPresenter播放': st.column_config.TextColumn('🖥️ PP播放'),
+            'ProPresenter更新': st.column_config.TextColumn('🔄 PP更新'),
+        }
+    )
+    
+    # 显示预览统计
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        completed_count = sum(1 for item in preview_data if '已完成' in item['状态'])
+        st.metric("✅ 已完成", completed_count)
+    
+    with col2:
+        current_count = sum(1 for item in preview_data if '今天' in item['状态'] or '本周' in item['状态'])
+        st.metric("🔥 当前", current_count)
+    
+    with col3:
+        upcoming_count = sum(1 for item in preview_data if '下周' in item['状态'])
+        st.metric("⏰ 下周", upcoming_count)
+    
+    with col4:
+        future_count = sum(1 for item in preview_data if '未来' in item['状态'])
+        st.metric("📅 未来", future_count)
+    
+    # 显示重点关注
+    show_preview_highlights(preview_data, today)
+
+def show_preview_highlights(preview_data, today):
+    """显示预览重点信息"""
+    highlights = []
+    
+    # 检查今天和本周的安排
+    today_items = [item for item in preview_data if '今天' in item['状态']]
+    this_week_items = [item for item in preview_data if '本周' in item['状态']]
+    next_week_items = [item for item in preview_data if '下周' in item['状态']]
+    
+    if today_items:
+        for item in today_items:
+            if any([item['音控'], item['导播/摄影'], item['ProPresenter播放']]):
+                highlights.append(f"📍 **今天主日**: {item['音控'] or '待定'} (音控), {item['导播/摄影'] or '待定'} (导播)")
+            else:
+                highlights.append("🚨 **今天主日暂无完整安排**")
+    
+    if this_week_items:
+        for item in this_week_items:
+            if not any([item['音控'], item['导播/摄影'], item['ProPresenter播放']]):
+                highlights.append(f"⚠️ **{item['日期']} 本周主日安排不完整**")
+    
+    if next_week_items:
+        incomplete_next_week = [item for item in next_week_items 
+                               if not any([item['音控'], item['导播/摄影'], item['ProPresenter播放']])]
+        if incomplete_next_week:
+            dates = [item['日期'] for item in incomplete_next_week]
+            highlights.append(f"⏰ **下周需要关注**: {', '.join(dates)}")
+    
+    # 检查人员重复
+    for item in preview_data:
+        if item['状态'] not in ['✅ 已完成']:  # 只检查未完成的
+            assignments = [item['音控'], item['导播/摄影'], item['ProPresenter播放'], item['ProPresenter更新']]
+            assignments = [a for a in assignments if a]  # 移除空值
+            if len(assignments) != len(set(assignments)):  # 有重复
+                duplicates = [a for a in set(assignments) if assignments.count(a) > 1]
+                highlights.append(f"👥 **{item['日期']}** 重复安排: {', '.join(duplicates)}")
+    
+    # 显示重点信息
+    if highlights:
+        st.markdown("#### 🔔 重点关注")
+        for highlight in highlights[:5]:  # 最多显示5个重点
+            if "🚨" in highlight:
+                st.error(highlight)
+            elif "⚠️" in highlight or "⏰" in highlight:
+                st.warning(highlight)
+            elif "👥" in highlight:
+                st.info(highlight)
+            else:
+                st.success(highlight)
+    else:
+        st.success("✅ 近期排程安排良好")
 
 def show_data_viewer(data_result):
     """显示数据查看器"""
@@ -720,13 +1043,9 @@ def main():
     if page == "📊 数据概览":
         show_data_overview(data_result)
         
-        # 如果数据加载成功，显示一些基本信息
+        # 如果数据加载成功，显示当前日期附近的数据
         if data_result['success'] and not data_result['cleaned_data'].empty:
-            st.markdown("### 📋 数据预览")
-            st.dataframe(
-                data_result['cleaned_data'].head(10),
-                use_container_width=True
-            )
+            show_nearby_schedule_preview(data_result)
     
     elif page == "🔍 数据查看器":
         show_data_viewer(data_result)
