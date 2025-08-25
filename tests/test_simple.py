@@ -6,8 +6,10 @@
 """
 
 from datetime import date, datetime
-from simple_scheduler import MinistryAssignment, NotificationGenerator, GoogleSheetsExtractor
 import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from src.scheduler import MinistryAssignment, NotificationGenerator, GoogleSheetsExtractor
 from unittest.mock import Mock
 
 def create_mock_extractor():

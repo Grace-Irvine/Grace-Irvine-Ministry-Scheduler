@@ -14,7 +14,7 @@ from datetime import datetime, date
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).parent))
 
-from simple_scheduler import GoogleSheetsExtractor
+from .scheduler import GoogleSheetsExtractor
 from dotenv import load_dotenv
 
 def main():

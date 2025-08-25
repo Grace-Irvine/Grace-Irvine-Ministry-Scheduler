@@ -17,7 +17,7 @@ import json
 import io
 
 # 导入我们的数据清洗模块
-from focused_data_cleaner import FocusedDataCleaner
+from src.data_cleaner import FocusedDataCleaner
 
 # 页面配置
 st.set_page_config(
