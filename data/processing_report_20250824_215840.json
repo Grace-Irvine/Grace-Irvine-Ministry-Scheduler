@@ -1,0 +1,75 @@
+{
+  "timestamp": "2025-08-24T21:58:40.923565",
+  "config": {
+    "spreadsheet_id": "1wescUQe9rIVLNcKdqmSLpzlAw9BGXMZmkFvjEF296nM",
+    "sheet_name": "总表",
+    "columns": {
+      "date": "A",
+      "roles": [
+        {
+          "key": "Q",
+          "service_type": "音控"
+        },
+        {
+          "key": "S",
+          "service_type": "导播/摄影"
+        },
+        {
+          "key": "T",
+          "service_type": "ProPresenter播放"
+        },
+        {
+          "key": "U",
+          "service_type": "ProPresenter更新"
+        }
+      ]
+    }
+  },
+  "processing_stats": {
+    "total_rows": 132,
+    "valid_rows": 85,
+    "cleaned_names": 0,
+    "invalid_dates": 0,
+    "empty_rows_removed": 0
+  },
+  "summary_report": {
+    "total_schedules": 85,
+    "date_range": "2024-01-07 至 2025-12-21",
+    "role_statistics": {
+      "音控": 85,
+      "导播/摄影": 85,
+      "ProPresenter播放": 85,
+      "ProPresenter更新": 30
+    },
+    "volunteer_statistics": {
+      "total_volunteers": 22,
+      "volunteer_list": [
+        "Daniel",
+        "Gavin",
+        "Jim 康康",
+        "Jimmy",
+        "Jimmy+Gavin",
+        "Junxin Yu",
+        "Martin+李忠涵",
+        "Zoey",
+        "何凯",
+        "俊鑫",
+        "吕晓燕",
+        "康康",
+        "张宇",
+        "张萌",
+        "忠涵",
+        "明明",
+        "晓燕",
+        "景文",
+        "朵朵",
+        "李忠涵",
+        "李忠涵+康康",
+        "靖铮"
+      ]
+    }
+  },
+  "output_files": {
+    "excel_file": "/Users/jonathan_jing/SynologyDrive/教会/Grace Irvine/AI App/Grace-Irvine-Ministry-Scheduler/data/focused_schedule_20250824_215840.xlsx"
+  }
+}

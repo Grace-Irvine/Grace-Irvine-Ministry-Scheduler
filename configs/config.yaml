@@ -1,0 +1,13 @@
+spreadsheet_id: "1wescUQe9rIVLNcKdqmSLpzlAw9BGXMZmkFvjEF296nM"
+sheet_name: "总表"
+columns:
+  date: "A"
+  roles:
+    - key: "Q"
+      service_type: "音控"
+    - key: "S"
+      service_type: "导播/摄影"
+    - key: "T"
+      service_type: "ProPresenter播放"
+    - key: "U"
+      service_type: "ProPresenter更新"
