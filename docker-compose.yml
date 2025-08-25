@@ -1,0 +1,79 @@
+# Grace Irvine Ministry Scheduler - Docker Compose Configuration
+# For local development and testing
+
+version: '3.8'
+
+services:
+  # Main application
+  app:
+    build: .
+    ports:
+      - "8000:8080"
+    environment:
+      - DEBUG=true
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs:ro
+      - ./.env:/app/.env:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - ministry-network
+
+  # Redis for background tasks
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - ministry-network
+    command: redis-server --appendonly yes
+
+  # Background worker for scheduled tasks
+  worker:
+    build: .
+    environment:
+      - DEBUG=true
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs:ro
+      - ./.env:/app/.env:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - ministry-network
+    command: celery -A app.workers.celery_app worker --loglevel=info
+
+  # Scheduler for background tasks
+  scheduler:
+    build: .
+    environment:
+      - DEBUG=true
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs:ro
+      - ./.env:/app/.env:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - ministry-network
+    command: celery -A app.workers.celery_app beat --loglevel=info
+
+volumes:
+  redis_data:
+
+networks:
+  ministry-network:
+    driver: bridge

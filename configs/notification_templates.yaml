@@ -1,0 +1,238 @@
+# Notification Templates Configuration
+
+# 周三确认通知 - 当周事工安排
+weekly_confirmation:
+  name: "Weekly Ministry Confirmation"
+  description: "Wednesday evening notification for current week ministry assignments"
+  
+  email:
+    subject: "本周主日事工安排确认 - {{ date_range }}"
+    html_template: "email/weekly_confirmation.html"
+    text_template: "email/weekly_confirmation.txt"
+    
+  sms:
+    template: "sms/weekly_confirmation.txt"
+    max_length: 160
+    
+  data_scope:
+    # Get data for current week (Sunday to Saturday)
+    type: "current_week"
+    start_day: "sunday"
+    
+  recipients:
+    include_primary: true
+    include_backup: false
+    notification_type: "weekly_confirmation"
+
+# 周六提醒通知 - 主日服事提醒
+sunday_reminder:
+  name: "Sunday Service Reminder"
+  description: "Saturday evening reminder for upcoming Sunday service"
+  
+  email:
+    subject: "明日主日服事提醒 - {{ service_date }}"
+    html_template: "email/sunday_reminder.html"
+    text_template: "email/sunday_reminder.txt"
+    
+  sms:
+    template: "sms/sunday_reminder.txt"
+    max_length: 160
+    
+  data_scope:
+    # Get data for next Sunday only
+    type: "next_sunday"
+    
+  recipients:
+    include_primary: true
+    include_backup: false
+    notification_type: "sunday_reminder"
+
+# 月度总览通知 - 当月排班一览
+monthly_overview:
+  name: "Monthly Schedule Overview"
+  description: "Monthly comprehensive schedule overview"
+  
+  email:
+    subject: "{{ month_year }}月事工安排总览"
+    html_template: "email/monthly_overview.html"
+    text_template: "email/monthly_overview.txt"
+    
+  sms:
+    template: "sms/monthly_overview.txt"
+    max_length: 160
+    
+  data_scope:
+    # Get data for current month
+    type: "current_month"
+    
+  recipients:
+    include_primary: true
+    include_backup: true
+    notification_type: "monthly_overview"
+
+# Template Variables Documentation
+template_variables:
+  common:
+    - name: "church_name"
+      description: "Church name"
+      example: "Grace Irvine Presbyterian Church"
+      
+    - name: "current_date"
+      description: "Current date in Chinese format"
+      example: "2024年1月15日"
+      
+    - name: "current_time"
+      description: "Current time"
+      example: "20:00"
+      
+  weekly_confirmation:
+    - name: "date_range"
+      description: "Week date range"
+      example: "1月14日-1月20日"
+      
+    - name: "week_schedules"
+      description: "List of weekly ministry schedules"
+      type: "array"
+      fields: ["date", "time", "location", "roles"]
+      
+    - name: "total_assignments"
+      description: "Total number of assignments for the week"
+      example: 15
+      
+  sunday_reminder:
+    - name: "service_date"
+      description: "Upcoming Sunday date"
+      example: "1月21日"
+      
+    - name: "service_time"
+      description: "Service start time"
+      example: "10:00"
+      
+    - name: "sunday_schedule"
+      description: "Sunday ministry schedule"
+      type: "object"
+      fields: ["date", "time", "location", "roles"]
+      
+    - name: "arrival_time"
+      description: "Recommended arrival time"
+      example: "9:30"
+      
+  monthly_overview:
+    - name: "month_year"
+      description: "Month and year"
+      example: "2024年1月"
+      
+    - name: "month_schedules"
+      description: "Complete monthly schedule"
+      type: "array"
+      fields: ["date", "time", "location", "roles"]
+      
+    - name: "total_services"
+      description: "Total number of services in month"
+      example: 4
+      
+    - name: "unique_volunteers"
+      description: "Number of unique volunteers"
+      example: 25
+      
+    - name: "role_summary"
+      description: "Summary by ministry role"
+      type: "array"
+      fields: ["role", "assignments", "volunteers"]
+
+# Email Styling Configuration
+email_styling:
+  # Color scheme
+  colors:
+    primary: "#2E5984"      # Navy blue
+    secondary: "#4A90B8"    # Light blue
+    accent: "#F4B942"       # Golden yellow
+    text: "#333333"         # Dark gray
+    background: "#FFFFFF"   # White
+    
+  # Typography
+  fonts:
+    primary: "'Arial', sans-serif"
+    heading: "'Georgia', serif"
+    
+  # Layout
+  max_width: "600px"
+  padding: "20px"
+  
+  # Components
+  header:
+    background_color: "{{ colors.primary }}"
+    text_color: "#FFFFFF"
+    padding: "20px"
+    
+  content:
+    padding: "30px 20px"
+    line_height: "1.6"
+    
+  footer:
+    background_color: "#F8F9FA"
+    padding: "20px"
+    font_size: "12px"
+    color: "#666666"
+
+# SMS Optimization Settings
+sms_settings:
+  # Language preferences
+  use_simplified_chinese: true
+  use_abbreviations: true
+  
+  # Abbreviation mappings
+  abbreviations:
+    "主席": "主"
+    "讲员": "讲"
+    "领会": "领"
+    "敬拜": "拜"
+    "司琴": "琴"
+    "音控": "音"
+    "投影": "影"
+    "招待": "待"
+    "儿童主日学": "儿"
+    "清洁": "洁"
+    
+  # Format templates
+  person_role_format: "{{ person }}({{ role }})"
+  date_format: "{{ month }}/{{ day }}"
+  time_format: "{{ hour }}:{{ minute }}"
+
+# Localization
+localization:
+  default_language: "zh_CN"
+  
+  # Chinese text
+  zh_CN:
+    days_of_week:
+      0: "周一"
+      1: "周二"
+      2: "周三"
+      3: "周四"
+      4: "周五"
+      5: "周六"
+      6: "周日"
+      
+    months:
+      1: "一月"
+      2: "二月"
+      3: "三月"
+      4: "四月"
+      5: "五月"
+      6: "六月"
+      7: "七月"
+      8: "八月"
+      9: "九月"
+      10: "十月"
+      11: "十一月"
+      12: "十二月"
+      
+    common_phrases:
+      dear: "亲爱的"
+      ministry_team: "事工团队"
+      service_time: "聚会时间"
+      location: "地点"
+      please_confirm: "请确认"
+      thank_you: "谢谢"
+      god_bless: "神祝福"

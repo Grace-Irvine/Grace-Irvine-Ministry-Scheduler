@@ -1,0 +1,203 @@
+# Grace Irvine Ministry Scheduler Configuration
+
+# Application Settings
+app:
+  name: "Grace Irvine Ministry Scheduler"
+  version: "1.0.0"
+  debug: false
+  host: "0.0.0.0"
+  port: 8000
+
+# Database Configuration
+database:
+  url: "sqlite:///./data/database.db"
+  echo: false
+  pool_size: 10
+  max_overflow: 20
+
+# Google Sheets Configuration
+google_sheets:
+  spreadsheet_id: "${GOOGLE_SPREADSHEET_ID}"
+  sheet_name: "总表"
+  service_account_file: "configs/service_account.json"
+  
+  # Column mappings (like the data visualizer)
+  columns:
+    date: "A"
+    time: "B"
+    location: "C"
+    roles:
+      - key: "D"
+        service_type: "主席"
+      - key: "E"
+        service_type: "讲员"
+      - key: "F"
+        service_type: "领会"
+      - key: "G"
+        service_type: "敬拜"
+      - key: "H"
+        service_type: "司琴"
+      - key: "I"
+        service_type: "音控"
+      - key: "J"
+        service_type: "投影"
+      - key: "K"
+        service_type: "招待"
+      - key: "L"
+        service_type: "儿童主日学"
+      - key: "M"
+        service_type: "清洁"
+    notes: "N"
+
+# Notification Schedule Configuration
+notification_schedule:
+  # 周三确认通知 - 当周事工安排
+  weekly_confirmation:
+    enabled: true
+    day_of_week: 2  # Wednesday (0=Monday)
+    hour: 20
+    minute: 0
+    timezone: "America/Los_Angeles"
+    
+  # 周六提醒通知 - 主日服事提醒
+  sunday_reminder:
+    enabled: true
+    day_of_week: 5  # Saturday (0=Monday)
+    hour: 20
+    minute: 0
+    timezone: "America/Los_Angeles"
+    
+  # 月度总览通知 - 每月1日
+  monthly_overview:
+    enabled: true
+    day_of_month: 1
+    hour: 9
+    minute: 0
+    timezone: "America/Los_Angeles"
+
+# Email Configuration
+email:
+  provider: "sendgrid"  # Options: sendgrid, smtp, ses
+  
+  # SendGrid Settings
+  sendgrid:
+    api_key: "${SENDGRID_API_KEY}"
+    from_email: "${SENDGRID_FROM_EMAIL}"
+    from_name: "Grace Irvine Ministry"
+    
+  # SMTP Settings (backup)
+  smtp:
+    host: "${SMTP_HOST}"
+    port: 587
+    username: "${SMTP_USERNAME}"
+    password: "${SMTP_PASSWORD}"
+    use_tls: true
+    
+  # Default settings
+  default_subject_prefix: "[Grace Irvine Ministry] "
+  max_retries: 3
+  retry_delay: 300  # seconds
+
+# SMS Configuration
+sms:
+  provider: "twilio"  # Options: twilio, aws_sns
+  
+  # Twilio Settings
+  twilio:
+    account_sid: "${TWILIO_ACCOUNT_SID}"
+    auth_token: "${TWILIO_AUTH_TOKEN}"
+    from_number: "${TWILIO_FROM_NUMBER}"
+    
+  # AWS SNS Settings
+  aws_sns:
+    access_key_id: "${AWS_ACCESS_KEY_ID}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "us-west-2"
+    
+  max_retries: 3
+  retry_delay: 300  # seconds
+
+# Calendar Configuration
+calendar:
+  enabled: true
+  filename: "ministry_schedule.ics"
+  output_directory: "data/calendars"
+  base_url: "${CALENDAR_BASE_URL}"  # For subscription URLs
+  
+  # Default reminder settings (minutes before event)
+  default_alarms:
+    - 30    # 30 minutes before
+    - 1440  # 1 day before
+    
+  # Calendar metadata
+  calendar_name: "Grace Irvine Ministry Schedule"
+  calendar_description: "Ministry service schedule for Grace Irvine Presbyterian Church"
+  timezone: "America/Los_Angeles"
+
+# Recipients Configuration
+recipients:
+  # Primary notification recipients (ministry leaders)
+  primary:
+    - name: "Ministry Coordinator"
+      email: "${PRIMARY_EMAIL_1}"
+      phone: "${PRIMARY_PHONE_1}"
+      notifications: ["weekly_confirmation", "sunday_reminder", "monthly_overview"]
+      
+    - name: "Worship Leader"
+      email: "${PRIMARY_EMAIL_2}"
+      phone: "${PRIMARY_PHONE_2}"
+      notifications: ["weekly_confirmation", "sunday_reminder"]
+      
+  # Backup recipients
+  backup:
+    - name: "Pastor"
+      email: "${BACKUP_EMAIL_1}"
+      notifications: ["monthly_overview"]
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # File logging
+  file:
+    enabled: true
+    filename: "logs/scheduler.log"
+    max_size_mb: 10
+    backup_count: 5
+    
+  # Structured logging for production
+  structured:
+    enabled: false
+    format: "json"
+
+# Redis Configuration (for Celery)
+redis:
+  url: "${REDIS_URL:-redis://localhost:6379/0}"
+  max_connections: 20
+
+# Security Configuration
+security:
+  api_key: "${API_KEY}"
+  allowed_hosts: ["*"]
+  cors_origins: ["*"]
+
+# Feature Flags
+features:
+  enable_web_ui: true
+  enable_api: true
+  enable_webhooks: false
+  enable_analytics: false
+
+# Data Validation Rules
+validation:
+  # Date range for valid schedules
+  min_date_days_ahead: -7   # Allow up to 7 days in the past
+  max_date_days_ahead: 365  # Up to 1 year in the future
+  
+  # Required fields
+  required_fields: ["date", "time", "location"]
+  
+  # Person name validation
+  min_name_length: 2
+  max_name_length: 50
