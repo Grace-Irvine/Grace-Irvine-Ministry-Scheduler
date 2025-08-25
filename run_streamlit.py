@@ -12,7 +12,7 @@ def main():
     """启动 Streamlit 应用"""
     print("=" * 60)
     print("  Grace Irvine Ministry Scheduler - Web 应用")
-    print("  恩典尔湾长老教会事工排程管理系统")
+    print("  恩典尔湾教会事工排程管理系统")
     print("=" * 60)
     print()
     
