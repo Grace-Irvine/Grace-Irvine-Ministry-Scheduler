@@ -13,6 +13,7 @@
 - **📊 数据管理**: 从 Google Sheets 自动提取和清洗排班数据
 - **📝 通知生成**: 自动生成微信群通知模板（周三确认、周六提醒、月度总览）
 - **📧 邮件通知**: 支持自动发送HTML格式的邮件通知给服事同工
+- **🛠️ 模板管理**: 可视化的Web界面编辑和管理通知模板
 - **🔍 数据分析**: 实时数据质量监控和统计分析
 - **📅 排程预览**: 查看近期排班安排，智能识别冲突和空缺
 - **📥 数据导出**: 支持 Excel 和 CSV 格式导出
@@ -26,6 +27,7 @@ Grace-Irvine-Ministry-Scheduler/
 │   ├── scheduler.py         # 排班调度模块
 │   ├── notification_generator.py  # 通知生成模块
 │   ├── email_sender.py      # 邮件发送模块
+│   ├── template_manager.py  # 模板管理模块
 │   └── data_validator.py    # 数据验证模块
 ├── scripts/                  # 执行脚本
 │   ├── run_streamlit.py     # Web应用启动脚本
@@ -47,9 +49,14 @@ Grace-Irvine-Ministry-Scheduler/
 │   └── service_account.json # Google API密钥(需自行添加)
 ├── data/                     # 数据文件
 ├── templates/                # 通知模板
+│   ├── email/               # 邮件HTML模板
+│   ├── sms/                 # 短信模板
+│   └── notification_templates.yaml # 微信群通知模板配置
 ├── docs/                     # 文档
 │   └── guides/              # 使用指南
-└── streamlit_app.py         # Web应用主文件
+├── streamlit_app.py         # Web应用主文件
+├── template_editor.py       # 模板编辑器
+└── run_template_editor.py   # 模板编辑器启动脚本
 ```
 
 ## 🚀 快速开始
@@ -180,6 +187,53 @@ python scripts/send_email_notifications.py sunday  # 周六提醒
 - 📋 详细的发送指导说明
 - 📊 服事安排统计信息
 - ⏰ 最佳发送时间提醒
+
+详细配置说明请参考 [邮件设置指南](docs/guides/EMAIL_SETUP_GUIDE.md)
+
+## 🛠️ 模板管理功能
+
+### 可视化模板编辑
+
+系统提供了直观的Web界面来编辑和管理通知模板：
+
+```bash
+# 启动模板编辑器
+python3 run_template_editor.py
+
+# 或者直接使用streamlit
+streamlit run template_editor.py --server.port 8502
+```
+
+### 主要功能
+
+- **📝 在线编辑**：通过Web界面修改模板内容
+- **👁️ 实时预览**：编辑时即时看到效果
+- **🧪 真实测试**：连接Google Sheets测试实际数据
+- **💾 一键保存**：修改后一键保存到配置文件
+
+### 模板变量
+
+所有模板都支持使用变量来插入动态内容：
+
+**周三确认通知和周六提醒通知：**
+- `{month}` - 月份
+- `{day}` - 日期
+- `{audio_tech}` - 音控人员
+- `{screen_operator}` - 屏幕操作人员
+- `{camera_operator}` - 摄像/导播人员
+- `{propresenter}` - ProPresenter制作人员
+- `{video_editor}` - 视频剪辑人员
+
+**使用示例：**
+```yaml
+template: |
+  【本周{month}月{day}日主日事工安排提醒】🕊️
+  
+  • 音控：{audio_tech}
+  • 屏幕：{screen_operator}
+  
+  请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏
+```
 
 详细配置说明请参考 [邮件设置指南](docs/guides/EMAIL_SETUP_GUIDE.md)
 

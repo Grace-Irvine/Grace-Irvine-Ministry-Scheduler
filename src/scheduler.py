@@ -286,50 +286,24 @@ class GoogleSheetsExtractor:
 class NotificationGenerator:
     """通知生成器"""
     
-    def __init__(self, extractor: GoogleSheetsExtractor):
+    def __init__(self, extractor: GoogleSheetsExtractor, template_manager=None):
         self.extractor = extractor
+        # 如果没有提供模板管理器，则创建默认的
+        if template_manager is None:
+            from .template_manager import get_default_template_manager
+            template_manager = get_default_template_manager()
+        self.template_manager = template_manager
     
     def generate_weekly_confirmation(self) -> str:
         """生成周三晚上的确认通知 (模板1)"""
         assignment = self.extractor.get_current_week_assignment()
-        
-        if not assignment:
-            return "【本周主日事工安排提醒】🕊️\n\n暂无本周事工安排，请联系协调员确认。"
-        
-        # 格式化日期
-        month = assignment.date.month
-        day = assignment.date.day
-        
-        template = f"""【本周{month}月{day}日主日事工安排提醒】🕊️
-
-• 音控：{assignment.audio_tech or '待安排'}
-• 屏幕：{assignment.screen_operator or '待安排'}
-• 摄像/导播：{assignment.camera_operator or '待安排'}
-• Propresenter 制作：{assignment.propresenter or '待安排'}
-• 视频剪辑：{assignment.video_editor}
-
-请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏"""
-        
-        return template
+        return self.template_manager.render_weekly_confirmation(assignment)
     
     def generate_sunday_reminder(self) -> str:
         """生成周六晚上的提醒通知 (模板2)"""
         # 周六发送时应该获取下个主日的安排
         assignment = self.extractor.get_next_sunday_assignment()
-        
-        if not assignment:
-            return "【主日服事提醒】✨\n\n暂无明日事工安排，请联系协调员确认。"
-        
-        template = f"""【主日服事提醒】✨
-明天 8:30布置/ 9:00彩排 / 10:00 正式敬拜  
-请各位同工提前到场：  
-- 音控：{assignment.audio_tech or '待安排'} 9:00到，随敬拜团排练
-- 屏幕：{assignment.screen_operator or '待安排'} 9:00到，随敬拜团排练
-- 摄像/导播: {assignment.camera_operator or '待安排'} 9:30到，检查预设机位
-
-愿主同在，出入平安。若临时不适请第一时间私信我。🙌"""
-        
-        return template
+        return self.template_manager.render_sunday_reminder(assignment)
     
     def generate_monthly_overview(self, year: int = None, month: int = None) -> str:
         """生成月初的排班一览通知 (模板3)"""
@@ -340,38 +314,10 @@ class NotificationGenerator:
         
         assignments = self.extractor.get_monthly_assignments(year, month)
         
-        # 构建月度安排表格
-        schedule_text = ""
-        if assignments:
-            schedule_text = "\n当月安排预览：\n"
-            for assignment in assignments:
-                month_day = f"{assignment.date.month}/{assignment.date.day}"
-                roles = []
-                if assignment.audio_tech:
-                    roles.append(f"音控:{assignment.audio_tech}")
-                if assignment.screen_operator:
-                    roles.append(f"屏幕:{assignment.screen_operator}")
-                if assignment.camera_operator:
-                    roles.append(f"摄像:{assignment.camera_operator}")
-                if assignment.propresenter:
-                    roles.append(f"制作:{assignment.propresenter}")
-                
-                if roles:
-                    schedule_text += f"• {month_day}: {', '.join(roles)}\n"
-        
         # 获取 Google Sheets 链接
         sheet_url = f"https://docs.google.com/spreadsheets/d/{self.extractor.spreadsheet_id}"
         
-        template = f"""【{year}年{month:02d}月事工排班一览】📅
-请各位同工先行预留时间，如有冲突尽快与我沟通：
-{sheet_url}
-{schedule_text}
-温馨提示：
-- 周三晚发布当周安排（确认/调换）
-- 周六晚发布主日提醒（到场时间）
-感谢大家同心配搭！🙏"""
-        
-        return template
+        return self.template_manager.render_monthly_overview(assignments, year, month, sheet_url)
 
 def main():
     """主函数 - 测试和演示"""

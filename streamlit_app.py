@@ -18,6 +18,12 @@ import io
 
 # 导入我们的数据清洗模块
 from src.data_cleaner import FocusedDataCleaner
+from src.template_manager import NotificationTemplateManager
+from src.scheduler import GoogleSheetsExtractor, NotificationGenerator, MinistryAssignment
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # 页面配置
 st.set_page_config(
@@ -83,6 +89,43 @@ def load_css():
         background-color: #f8f9fa;
         border-left: 4px solid #007bff;
         padding: 1rem;
+        margin: 1rem 0;
+    }
+    
+    /* 模板编辑器样式 */
+    .template-editor-container {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    
+    .template-preview {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1rem;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .template-stats {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
+    
+    .help-section {
+        background: #e8f5e8;
+        border-left: 4px solid #28a745;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
         margin: 1rem 0;
     }
     </style>
@@ -701,19 +744,33 @@ def generate_next_week_template(data_result):
         key="template_output"
     )
     
-    # 保存模板到文件
-    if st.button("💾 保存模板到文件"):
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"notification_template_{timestamp}.txt"
-        filepath = PROJECT_ROOT / "data" / filename
-        
-        # 确保目录存在
-        filepath.parent.mkdir(exist_ok=True)
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(template)
-        
-        st.success(f"✅ 模板已保存到: {filepath}")
+    # 操作按钮
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # 保存模板到文件
+        if st.button("💾 保存模板到文件", use_container_width=True):
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"notification_template_{timestamp}.txt"
+            filepath = PROJECT_ROOT / "data" / filename
+            
+            # 确保目录存在
+            filepath.parent.mkdir(exist_ok=True)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(template)
+            
+            st.success(f"✅ 模板已保存到: {filepath}")
+    
+    with col2:
+        # 发送邮件按钮
+        if st.button("📧 发送到邮箱", type="primary", use_container_width=True):
+            send_template_email(template, template_type, next_sunday if template_type != "月度总览通知" else None)
+    
+    with col3:
+        # 复制到剪贴板提示
+        if st.button("📋 复制提示", use_container_width=True):
+            st.info("💡 请手动选择上方文本框中的内容进行复制")
 
 def generate_wednesday_template_focused(sunday_date, schedule):
     """生成周三确认通知模板 - 专注版"""
@@ -1014,9 +1071,20 @@ def main():
     with st.sidebar:
         st.markdown("### 🧭 导航菜单")
         
+        # 处理页面重定向
+        if 'page_redirect' in st.session_state:
+            default_page = st.session_state.page_redirect
+            del st.session_state.page_redirect
+        else:
+            default_page = "📊 数据概览"
+        
+        page_options = ["📊 数据概览", "🔍 数据查看器", "📝 模板生成器", "🛠️ 模板编辑器", "⚙️ 系统设置"]
+        default_index = page_options.index(default_page) if default_page in page_options else 0
+        
         page = st.selectbox(
             "选择页面",
-            ["📊 数据概览", "🔍 数据查看器", "📝 模板生成器", "⚙️ 系统设置"]
+            page_options,
+            index=default_index
         )
         
         st.markdown("---")
@@ -1026,6 +1094,10 @@ def main():
         
         if st.button("🔄 刷新数据", use_container_width=True):
             st.cache_data.clear()
+            st.rerun()
+        
+        if st.button("🛠️ 快速编辑模板", use_container_width=True):
+            st.session_state.page_redirect = "🛠️ 模板编辑器"
             st.rerun()
         
         st.markdown("---")
@@ -1053,6 +1125,9 @@ def main():
     elif page == "📝 模板生成器":
         generate_next_week_template(data_result)
     
+    elif page == "🛠️ 模板编辑器":
+        show_template_editor()
+    
     elif page == "⚙️ 系统设置":
         show_settings()
     
@@ -1064,6 +1139,427 @@ def main():
         Made with ❤️ for Grace Irvine Presbyterian Church
     </div>
     """, unsafe_allow_html=True)
+
+def show_template_editor():
+    """显示模板编辑器页面"""
+    st.markdown('<div class="section-header">🛠️ 通知模板编辑器</div>', unsafe_allow_html=True)
+    st.markdown("通过可视化界面编辑和管理微信群通知模板")
+    
+    # 初始化模板管理器
+    if 'template_manager' not in st.session_state:
+        st.session_state.template_manager = NotificationTemplateManager()
+    
+    template_manager = st.session_state.template_manager
+    
+    # 创建选项卡布局
+    tab1, tab2, tab3 = st.tabs(["📝 编辑模板", "👁️ 预览效果", "🧪 真实测试"])
+    
+    with tab1:
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            # 模板类型选择
+            template_types = {
+                'weekly_confirmation': '📅 周三确认通知',
+                'sunday_reminder': '🔔 周六提醒通知',
+                'monthly_overview': '📊 月度总览通知'
+            }
+            
+            selected_template = st.selectbox(
+                "选择要编辑的模板:",
+                options=list(template_types.keys()),
+                format_func=lambda x: template_types[x],
+                key="template_selector"
+            )
+            
+            # 获取当前模板配置
+            template_config = template_manager.templates.get(selected_template, {})
+            
+            # 编辑主模板
+            st.markdown("#### 主模板内容")
+            current_template = template_config.get('template', '')
+            new_template = st.text_area(
+                "模板内容:",
+                value=current_template,
+                height=250,
+                help="使用 {变量名} 来插入动态内容，如 {audio_tech}、{month}、{day} 等",
+                key=f"main_template_{selected_template}"
+            )
+            
+            # 编辑无安排模板
+            if selected_template in ['weekly_confirmation', 'sunday_reminder']:
+                st.markdown("#### 无安排时的模板")
+                current_no_assignment = template_config.get('no_assignment_template', '')
+                new_no_assignment = st.text_area(
+                    "无安排模板内容:",
+                    value=current_no_assignment,
+                    height=120,
+                    key=f"no_assignment_template_{selected_template}"
+                )
+        
+        with col2:
+            # 默认值设置
+            st.markdown("#### 默认值设置")
+            defaults = template_config.get('defaults', {})
+            new_defaults = {}
+            
+            if selected_template in ['weekly_confirmation', 'sunday_reminder']:
+                default_fields = {
+                    'audio_tech': '音控',
+                    'screen_operator': '屏幕操作',
+                    'camera_operator': '摄像/导播',
+                    'propresenter': 'ProPresenter制作',
+                    'video_editor': '视频剪辑'
+                }
+                
+                for key, label in default_fields.items():
+                    new_defaults[key] = st.text_input(
+                        f"{label}默认值:",
+                        value=defaults.get(key, '待安排'),
+                        key=f"default_{key}_{selected_template}"
+                    )
+            
+            # 操作按钮
+            st.markdown("#### 操作")
+            
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                if st.button("📝 应用更改", type="primary", use_container_width=True):
+                    template_manager.set_template(selected_template, 'template', new_template)
+                    if selected_template in ['weekly_confirmation', 'sunday_reminder']:
+                        template_manager.set_template(selected_template, 'no_assignment_template', new_no_assignment)
+                        template_manager.templates[selected_template]['defaults'] = new_defaults
+                    st.success("✅ 更改已应用!")
+                    st.rerun()
+            
+            with col_btn2:
+                if st.button("💾 保存到文件", use_container_width=True):
+                    if template_manager.save_templates():
+                        st.success("✅ 模板已保存到文件!")
+                    else:
+                        st.error("❌ 保存失败!")
+    
+    with tab2:
+        st.markdown("### 👁️ 模板预览")
+        
+        # 创建测试数据
+        test_assignment = MinistryAssignment(
+            date=date.today() + timedelta(days=3),
+            audio_tech="Jimmy",
+            screen_operator="张三",
+            camera_operator="李四",
+            propresenter="王五",
+            video_editor="靖铮"
+        )
+        
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.markdown("#### 有安排时的效果")
+            try:
+                if selected_template == 'weekly_confirmation':
+                    preview = template_manager.render_weekly_confirmation(test_assignment)
+                elif selected_template == 'sunday_reminder':
+                    preview = template_manager.render_sunday_reminder(test_assignment)
+                elif selected_template == 'monthly_overview':
+                    preview = template_manager.render_monthly_overview(
+                        [test_assignment], 
+                        test_assignment.date.year, 
+                        test_assignment.date.month,
+                        "https://docs.google.com/spreadsheets/d/example"
+                    )
+                
+                st.code(preview, language=None)
+                
+            except Exception as e:
+                st.error(f"❌ 预览生成失败: {e}")
+        
+        with col2:
+            # 无安排预览
+            if selected_template in ['weekly_confirmation', 'sunday_reminder']:
+                st.markdown("#### 无安排时的效果")
+                try:
+                    if selected_template == 'weekly_confirmation':
+                        no_assignment_preview = template_manager.render_weekly_confirmation(None)
+                    else:
+                        no_assignment_preview = template_manager.render_sunday_reminder(None)
+                    
+                    st.code(no_assignment_preview, language=None)
+                except Exception as e:
+                    st.error(f"❌ 无安排预览生成失败: {e}")
+            else:
+                st.markdown("#### 变量说明")
+                if selected_template == 'monthly_overview':
+                    st.markdown("""
+                    **可用变量:**
+                    - `{year}` - 年份
+                    - `{month}` - 月份
+                    - `{sheet_url}` - Google Sheets链接
+                    - `{schedule_text}` - 自动生成的安排列表
+                    """)
+                else:
+                    st.markdown("""
+                    **可用变量:**
+                    - `{month}` - 月份
+                    - `{day}` - 日期
+                    - `{audio_tech}` - 音控人员
+                    - `{screen_operator}` - 屏幕操作人员
+                    - `{camera_operator}` - 摄像/导播人员
+                    - `{propresenter}` - ProPresenter制作人员
+                    - `{video_editor}` - 视频剪辑人员
+                    """)
+    
+    with tab3:
+        st.markdown("### 🧪 真实数据测试")
+        
+        # 尝试连接Google Sheets进行真实测试
+        spreadsheet_id = os.getenv("GOOGLE_SPREADSHEET_ID")
+        if spreadsheet_id:
+            try:
+                with st.spinner("正在连接Google Sheets..."):
+                    extractor = GoogleSheetsExtractor(spreadsheet_id)
+                    generator = NotificationGenerator(extractor, template_manager)
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown("#### 📅 周三确认通知")
+                    weekly_msg = generator.generate_weekly_confirmation()
+                    st.code(weekly_msg, language=None)
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        if st.button("📋 复制提示", key="copy_weekly"):
+                            st.info("请手动复制上面的内容")
+                    with col_btn2:
+                        if st.button("📧 发送邮件", key="email_weekly", type="primary"):
+                            send_template_email(weekly_msg, "周三确认通知")
+                
+                with col2:
+                    st.markdown("#### 🔔 周六提醒通知")
+                    sunday_msg = generator.generate_sunday_reminder()
+                    st.code(sunday_msg, language=None)
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        if st.button("📋 复制提示", key="copy_sunday"):
+                            st.info("请手动复制上面的内容")
+                    with col_btn2:
+                        if st.button("📧 发送邮件", key="email_sunday", type="primary"):
+                            send_template_email(sunday_msg, "周六提醒通知")
+                
+                with col3:
+                    st.markdown("#### 📊 月度总览通知")
+                    monthly_msg = generator.generate_monthly_overview()
+                    st.code(monthly_msg, language=None)
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        if st.button("📋 复制提示", key="copy_monthly"):
+                            st.info("请手动复制上面的内容")
+                    with col_btn2:
+                        if st.button("📧 发送邮件", key="email_monthly", type="primary"):
+                            send_template_email(monthly_msg, "月度总览通知")
+                
+                # 显示数据统计
+                st.markdown("---")
+                st.markdown("#### 📊 数据统计")
+                
+                current_assignment = extractor.get_current_week_assignment()
+                next_assignment = extractor.get_next_sunday_assignment()
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("本周安排", "有安排" if current_assignment else "无安排")
+                
+                with col2:
+                    st.metric("下周安排", "有安排" if next_assignment else "无安排")
+                
+                with col3:
+                    if current_assignment:
+                        roles_count = sum([1 for role in [current_assignment.audio_tech, current_assignment.screen_operator, 
+                                         current_assignment.camera_operator, current_assignment.propresenter] if role])
+                        st.metric("本周服事人数", roles_count)
+                    else:
+                        st.metric("本周服事人数", 0)
+                
+                with col4:
+                    monthly_assignments = extractor.get_monthly_assignments()
+                    st.metric("本月总安排", len(monthly_assignments))
+                
+            except Exception as e:
+                st.error(f"❌ 连接Google Sheets失败: {e}")
+                st.info("💡 请确保已正确配置Google Sheets访问权限")
+                st.code(f"错误详情: {str(e)}")
+        else:
+            st.warning("⚠️ 未设置GOOGLE_SPREADSHEET_ID环境变量")
+            st.info("请在.env文件中配置Google Sheets ID以使用真实数据测试功能")
+    
+    # 帮助信息
+    with st.expander("💡 使用帮助", expanded=False):
+        st.markdown("""
+        ### 模板编辑指南
+        
+        **1. 基本操作**
+        - 在"编辑模板"选项卡中修改模板内容
+        - 在"预览效果"选项卡中查看渲染结果
+        - 在"真实测试"选项卡中使用实际数据测试
+        
+        **2. 变量语法**
+        - 使用 `{变量名}` 插入动态内容
+        - 常用变量：`{month}`, `{day}`, `{audio_tech}` 等
+        - 变量会自动替换为实际数据
+        
+        **3. 保存机制**
+        - "应用更改"：将修改应用到内存中
+        - "保存到文件"：将修改永久保存到配置文件
+        
+        **4. 注意事项**
+        - 修改后记得点击"应用更改"
+        - 重要修改请及时"保存到文件"
+        - 可以随时在预览中查看效果
+        """)
+
+def send_template_email(template_content, template_type, service_date=None):
+    """发送模板到邮箱"""
+    try:
+        # 导入邮件发送模块
+        from src.email_sender import EmailSender, EmailRecipient
+        
+        # 初始化邮件发送器
+        email_sender = EmailSender()
+        
+        # 创建收件人（默认发送给配置的邮箱）
+        sender_email = os.getenv("SENDER_EMAIL", "jonathanjing@graceirvine.org")
+        recipient = EmailRecipient(
+            email=sender_email,
+            name="事工协调员"
+        )
+        
+        # 根据模板类型设置邮件主题
+        if template_type == "周三确认通知":
+            if service_date:
+                subject = f"【微信群通知模板】周三确认通知 - {service_date.month}月{service_date.day}日"
+            else:
+                subject = "【微信群通知模板】周三确认通知"
+        elif template_type == "周六提醒通知":
+            if service_date:
+                subject = f"【微信群通知模板】周六提醒通知 - {service_date.month}月{service_date.day}日"
+            else:
+                subject = "【微信群通知模板】周六提醒通知"
+        else:
+            subject = "【微信群通知模板】月度总览通知"
+        
+        # 创建HTML邮件内容
+        html_content = f"""
+        <html>
+        <body style="font-family: 'Microsoft YaHei', sans-serif; padding: 20px; background-color: #f5f5f5;">
+            <div style="max-width: 800px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <!-- Header -->
+                <div style="background: linear-gradient(135deg, #2E5984 0%, #4A90B8 100%); color: #ffffff; padding: 30px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 24px;">📱 微信群通知模板</h1>
+                    <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Grace Irvine 恩典尔湾教会</p>
+                </div>
+                
+                <!-- Content -->
+                <div style="padding: 30px;">
+                    <div style="background-color: #e8f5e8; border: 1px solid #28a745; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                        <h3 style="margin: 0 0 15px 0; color: #155724; font-size: 18px;">📋 使用说明</h3>
+                        <ol style="margin: 0; padding-left: 20px; color: #155724;">
+                            <li>复制下方的微信群通知内容</li>
+                            <li>打开相应的微信群聊天窗口</li>
+                            <li>粘贴并发送通知</li>
+                            <li>如需修改，可以直接在微信中编辑</li>
+                        </ol>
+                    </div>
+                    
+                    <div style="background-color: #f8f9fa; border: 2px solid #F4B942; border-radius: 8px; padding: 20px; margin: 25px 0; position: relative;">
+                        <div style="background-color: #F4B942; color: #ffffff; padding: 10px 15px; margin: -20px -20px 15px -20px; font-weight: bold; font-size: 16px; border-radius: 6px 6px 0 0;">
+                            📅 {template_type} - 微信群通知内容
+                        </div>
+                        <div style="font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.8; white-space: pre-line; background-color: #ffffff; padding: 15px; border-radius: 4px; border: 1px solid #e0e0e0; color: #333;">
+{template_content}
+                        </div>
+                    </div>
+                    
+                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 15px; margin: 20px 0; color: #856404;">
+                        <h4 style="margin: 0 0 10px 0;">⚠️ 发送建议</h4>
+                        <ul style="margin: 0; padding-left: 20px;">
+                            <li><strong>周三确认通知</strong>：建议在周三晚上8:00 PM发送</li>
+                            <li><strong>周六提醒通知</strong>：建议在周六晚上8:00 PM发送</li>
+                            <li><strong>月度总览通知</strong>：建议在月初发送</li>
+                            <li>发送前请再次确认人员信息是否正确</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div style="background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
+                    <p><strong>Grace Irvine 恩典尔湾教会</strong></p>
+                    <p>此邮件由事工管理系统自动发送 · {datetime.now().strftime('%Y年%m月%d日 %H:%M')}</p>
+                    <p>如有技术问题，请联系系统管理员</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # 创建纯文本版本
+        text_content = f"""
+{template_type} - 微信群通知模板
+
+使用说明：
+1. 复制下方的微信群通知内容
+2. 打开相应的微信群聊天窗口
+3. 粘贴并发送通知
+4. 如需修改，可以直接在微信中编辑
+
+微信群通知内容：
+{template_content}
+
+---
+此邮件由 Grace Irvine 恩典尔湾教会事工管理系统自动发送
+生成时间：{datetime.now().strftime('%Y年%m月%d日 %H:%M')}
+        """
+        
+        # 发送邮件
+        with st.spinner("正在发送邮件..."):
+            success = email_sender.send_email(
+                recipients=[recipient],
+                subject=subject,
+                html_content=html_content,
+                text_content=text_content
+            )
+        
+        if success:
+            st.success(f"✅ 邮件发送成功！")
+            st.info(f"📧 已发送到: {recipient.email}")
+            
+            # 显示发送详情
+            with st.expander("📋 发送详情", expanded=False):
+                st.write(f"**收件人**: {recipient.email}")
+                st.write(f"**主题**: {subject}")
+                st.write(f"**发送时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                st.write(f"**模板类型**: {template_type}")
+                if service_date:
+                    st.write(f"**服事日期**: {service_date.strftime('%Y年%m月%d日')}")
+        else:
+            st.error("❌ 邮件发送失败！")
+            st.info("请检查邮件配置和网络连接")
+            
+    except ImportError:
+        st.error("❌ 邮件发送模块未找到！")
+        st.info("请确保已正确安装邮件发送依赖")
+        
+    except Exception as e:
+        st.error(f"❌ 发送邮件时出错: {e}")
+        st.info("请检查邮件配置是否正确")
+        
+        # 显示错误详情（仅在调试时）
+        with st.expander("🔧 错误详情", expanded=False):
+            st.code(str(e))
 
 if __name__ == "__main__":
     main()
