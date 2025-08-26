@@ -27,3 +27,8 @@ pyyaml==6.0.1
 
 # HTTP 客户端 / HTTP Client (for health checks)
 requests==2.31.0
+
+# ICS日历支持 / ICS Calendar Support
+icalendar==5.0.11
+pytz==2023.3
+schedule==1.2.0
