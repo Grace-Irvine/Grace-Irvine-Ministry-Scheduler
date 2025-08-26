@@ -5,6 +5,8 @@ columns:
   roles:
     - key: "Q"
       service_type: "音控"
+    - key: "R"
+      service_type: "屏幕"
     - key: "S"
       service_type: "导播/摄影"
     - key: "T"
