@@ -290,7 +290,11 @@ class NotificationGenerator:
         self.extractor = extractor
         # 如果没有提供模板管理器，则创建默认的
         if template_manager is None:
-            from .template_manager import get_default_template_manager
+            try:
+                from .template_manager import get_default_template_manager
+            except ImportError:
+                # For cloud functions deployment
+                from template_manager import get_default_template_manager
             template_manager = get_default_template_manager()
         self.template_manager = template_manager
     
