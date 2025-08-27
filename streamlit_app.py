@@ -745,10 +745,34 @@ def generate_next_week_template(data_result):
         ["周三确认通知", "周六提醒通知", "月度总览通知"]
     )
     
+    # 使用统一的模板管理器
+    from src.template_manager import NotificationTemplateManager
+    from src.scheduler import NotificationGenerator
+    
+    template_manager = NotificationTemplateManager()
+    
     if template_type == "周三确认通知":
-        template = generate_wednesday_template_focused(next_sunday, next_week_schedule)
+        # 创建模拟的 assignment 对象
+        assignment = type('Assignment', (), {
+            'date': next_sunday,
+            'audio_tech': next_week_schedule.get_all_assignments().get('音控', ''),
+            'screen_operator': next_week_schedule.get_all_assignments().get('屏幕', ''),
+            'camera_operator': next_week_schedule.get_all_assignments().get('导播/摄影', ''),
+            'propresenter': next_week_schedule.get_all_assignments().get('ProPresenter播放', ''),
+            'video_editor': next_week_schedule.get_all_assignments().get('ProPresenter更新', '靖铮')
+        })()
+        template = template_manager.render_weekly_confirmation(assignment)
     elif template_type == "周六提醒通知":
-        template = generate_saturday_template_focused(next_sunday, next_week_schedule)
+        # 创建模拟的 assignment 对象
+        assignment = type('Assignment', (), {
+            'date': next_sunday,
+            'audio_tech': next_week_schedule.get_all_assignments().get('音控', ''),
+            'screen_operator': next_week_schedule.get_all_assignments().get('屏幕', ''),
+            'camera_operator': next_week_schedule.get_all_assignments().get('导播/摄影', ''),
+            'propresenter': next_week_schedule.get_all_assignments().get('ProPresenter播放', ''),
+            'video_editor': next_week_schedule.get_all_assignments().get('ProPresenter更新', '靖铮')
+        })()
+        template = template_manager.render_sunday_reminder(assignment)
     else:
         template = generate_monthly_template_focused(schedules)
     

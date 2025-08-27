@@ -200,10 +200,11 @@ class NotificationTemplateManager:
     def render_sunday_reminder(self, assignment: Optional[MinistryAssignment] = None) -> str:
         """渲染周六提醒通知
         
-        周六提醒通知只显示3种事工：
+        周六提醒通知显示4种事工：
         1. 音控
         2. 导播/摄影
         3. ProPresenter播放
+        4. ProPresenter更新
         
         Args:
             assignment: 事工安排数据
@@ -219,11 +220,12 @@ class NotificationTemplateManager:
         content += "明天 8:30布置/ 9:00彩排 / 10:00 正式敬拜\n"
         content += "请各位同工提前到场：\n"
         
-        # 只显示指定的3种事工，且只显示有人员安排的
+        # 显示指定的4种事工，且只显示有人员安排的
         ministry_roles = [
             ("音控", assignment.audio_tech, "9:00到，随敬拜团排练"),
             ("导播/摄影", assignment.camera_operator, "9:30到，检查摄影机水平，预设机位"),
-            ("ProPresenter播放", assignment.propresenter, "9:00到，随敬拜团排练")
+            ("ProPresenter播放", assignment.propresenter, "9:00到，随敬拜团排练"),
+            ("ProPresenter更新", assignment.video_editor, "提前准备内容")
         ]
         
         for role_name, person_name, arrival_instruction in ministry_roles:
@@ -366,15 +368,17 @@ class NotificationTemplateManager:
             'included_roles': [
                 '音控',
                 '导播/摄影',
-                'ProPresenter播放'
+                'ProPresenter播放',
+                'ProPresenter更新'
             ],
-            'excluded_roles': ['屏幕操作', 'ProPresenter更新', '视频剪辑'],
+            'excluded_roles': ['屏幕操作', '视频剪辑'],
             'send_time': '周六晚上 20:00',
             'purpose': '提醒明日主日服事，确认到场时间和注意事项',
             'arrival_times': {
                 '音控': '9:00到，随敬拜团排练',
                 '导播/摄影': '9:30到，检查摄影机水平，预设机位',
-                'ProPresenter播放': '9:00到，随敬拜团排练'
+                'ProPresenter播放': '9:00到，随敬拜团排练',
+                'ProPresenter更新': '提前准备内容'
             }
         }
         
@@ -404,7 +408,7 @@ class NotificationTemplateManager:
                 },
                 'sunday_reminder': {
                     'name': '周六提醒通知',
-                    'roles': ['音控', '导播/摄影', 'ProPresenter播放'],
+                    'roles': ['音控', '导播/摄影', 'ProPresenter播放', 'ProPresenter更新'],
                     'send_time': '周六 20:00',
                     'method': 'render_sunday_reminder()'
                 },
