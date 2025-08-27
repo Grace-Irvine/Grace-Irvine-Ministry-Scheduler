@@ -127,23 +127,45 @@ echo -e "${BLUE}⏰ 创建定时任务${NC}"
 
 # 周三上午10点发送确认通知
 echo -e "${YELLOW}📅 创建周三确认通知定时任务${NC}"
-gcloud scheduler jobs create http weekly-confirmation-job \
-    --location=${REGION} \
-    --schedule="0 10 * * 3" \
-    --time-zone="America/Los_Angeles" \
-    --uri=${WEEKLY_URL} \
-    --http-method=POST \
-    --description="Weekly confirmation notification - every Wednesday at 10 AM PST"
+if gcloud scheduler jobs describe weekly-confirmation-job --location=${REGION} &> /dev/null; then
+    echo -e "${BLUE}更新现有的周三确认通知定时任务${NC}"
+    gcloud scheduler jobs update http weekly-confirmation-job \
+        --location=${REGION} \
+        --schedule="0 10 * * 3" \
+        --time-zone="America/Los_Angeles" \
+        --uri=${WEEKLY_URL} \
+        --http-method=POST \
+        --description="Weekly confirmation notification - every Wednesday at 10 AM PST"
+else
+    gcloud scheduler jobs create http weekly-confirmation-job \
+        --location=${REGION} \
+        --schedule="0 10 * * 3" \
+        --time-zone="America/Los_Angeles" \
+        --uri=${WEEKLY_URL} \
+        --http-method=POST \
+        --description="Weekly confirmation notification - every Wednesday at 10 AM PST"
+fi
 
 # 周六下午6点发送提醒通知
 echo -e "${YELLOW}🔔 创建周六提醒通知定时任务${NC}"
-gcloud scheduler jobs create http sunday-reminder-job \
-    --location=${REGION} \
-    --schedule="0 18 * * 6" \
-    --time-zone="America/Los_Angeles" \
-    --uri=${SUNDAY_URL} \
-    --http-method=POST \
-    --description="Sunday reminder notification - every Saturday at 6 PM PST"
+if gcloud scheduler jobs describe sunday-reminder-job --location=${REGION} &> /dev/null; then
+    echo -e "${BLUE}更新现有的周六提醒通知定时任务${NC}"
+    gcloud scheduler jobs update http sunday-reminder-job \
+        --location=${REGION} \
+        --schedule="0 18 * * 6" \
+        --time-zone="America/Los_Angeles" \
+        --uri=${SUNDAY_URL} \
+        --http-method=POST \
+        --description="Sunday reminder notification - every Saturday at 6 PM PST"
+else
+    gcloud scheduler jobs create http sunday-reminder-job \
+        --location=${REGION} \
+        --schedule="0 18 * * 6" \
+        --time-zone="America/Los_Angeles" \
+        --uri=${SUNDAY_URL} \
+        --http-method=POST \
+        --description="Sunday reminder notification - every Saturday at 6 PM PST"
+fi
 
 # 11. 清理临时文件
 echo -e "${BLUE}🧹 清理临时文件${NC}"

@@ -32,3 +32,10 @@ requests==2.31.0
 icalendar==5.0.11
 pytz==2023.3
 schedule==1.2.0
+
+# 后台API服务 / Background API Service
+flask==3.0.0
+flask-cors==4.0.0
+
+# Google Cloud Storage / Cloud Storage
+google-cloud-storage==2.10.0

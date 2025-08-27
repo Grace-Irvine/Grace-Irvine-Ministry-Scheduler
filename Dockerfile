@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用文件
 COPY . .
 
+# 创建必要目录
+RUN mkdir -p /app/calendars /app/logs
+
 # 创建非 root 用户
 RUN useradd -m -u 1000 streamlituser && chown -R streamlituser:streamlituser /app
 USER streamlituser
@@ -36,5 +39,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/_stcore/health || exit 1
 
-# 启动命令
-CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8080", "--server.address=0.0.0.0", "--server.headless=true", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+# 启动命令 - 同时运行Streamlit和简化的ICS后台服务
+CMD ["bash", "-c", "python3 scripts/simple_ics_service.py & streamlit run streamlit_app.py --server.port=8080 --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false"]

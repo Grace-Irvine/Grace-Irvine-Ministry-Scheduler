@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ church_name }} - 明日主日服事提醒</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #F4B942 0%, #e8a825 100%);
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: bold;
+        }
+        .header p {
+            margin: 5px 0 0 0;
+            font-size: 16px;
+            opacity: 0.95;
+        }
+        .urgency-banner {
+            background-color: #dc3545;
+            color: #ffffff;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .greeting {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .service-info {
+            background: linear-gradient(135deg, #2E5984 0%, #4A90B8 100%);
+            color: #ffffff;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .service-info h2 {
+            margin: 0 0 15px 0;
+            font-size: 22px;
+        }
+        .service-details {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        .detail-item {
+            text-align: center;
+            flex: 1;
+        }
+        .detail-icon {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .detail-text {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .time-reminder {
+            background-color: #fff3cd;
+            border: 2px solid #F4B942;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        .time-reminder h3 {
+            margin: 0 0 10px 0;
+            color: #856404;
+            font-size: 18px;
+        }
+        .time-highlight {
+            font-size: 28px;
+            font-weight: bold;
+            color: #F4B942;
+            margin: 10px 0;
+        }
+        .assignments-section {
+            margin: 30px 0;
+        }
+        .assignments-title {
+            color: #2E5984;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #2E5984;
+            padding-bottom: 5px;
+        }
+        .assignment-card {
+            background-color: #f8f9fa;
+            border-left: 4px solid #2E5984;
+            padding: 15px 20px;
+            margin: 10px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .assignment-role {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2E5984;
+            margin-bottom: 5px;
+        }
+        .assignment-person {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .assignment-note {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+        }
+        .preparation-checklist {
+            background-color: #e8f5e8;
+            border: 1px solid #28a745;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        .preparation-checklist h4 {
+            margin: 0 0 15px 0;
+            color: #155724;
+            font-size: 16px;
+        }
+        .checklist-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        .checklist-item::before {
+            content: "✓";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+        .contact-info {
+            background-color: #f0f8ff;
+            border: 1px solid #4A90B8;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        .contact-info h4 {
+            margin: 0 0 10px 0;
+            color: #2E5984;
+        }
+        .weather-note {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 15px 0;
+            font-size: 13px;
+            color: #0c5460;
+        }
+        .footer {
+            background-color: #2E5984;
+            color: #ffffff;
+            padding: 25px 20px;
+            text-align: center;
+        }
+        .footer h3 {
+            margin: 0 0 10px 0;
+            color: #F4B942;
+        }
+        .footer p {
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+        @media (max-width: 600px) {
+            .container {
+                margin: 0;
+                box-shadow: none;
+            }
+            .header, .content, .footer {
+                padding: 20px 15px;
+            }
+            .service-details {
+                flex-direction: column;
+                gap: 15px;
+            }
+            .time-highlight {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Urgency Banner -->
+        <div class="urgency-banner">
+            🔔 明日主日服事提醒 · 请做好准备
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ church_name }}</h1>
+            <p>主日服事最终确认</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <div class="greeting">
+                亲爱的同工，主内平安！明天就是主日聚会，感谢您的忠心服事！
+            </div>
+
+            <!-- Service Information -->
+            {% if sunday_schedule %}
+            <div class="service-info">
+                <h2>🏛️ 明日聚会信息</h2>
+                <div class="service-details">
+                    <div class="detail-item">
+                        <span class="detail-icon">📅</span>
+                        <div class="detail-text">
+                            {{ service_date | chinese_date }}<br>
+                            {{ service_date | chinese_weekday }}
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-icon">⏰</span>
+                        <div class="detail-text">
+                            {{ service_time | chinese_time }}<br>
+                            开始聚会
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-icon">📍</span>
+                        <div class="detail-text">
+                            {{ location }}<br>
+                            聚会地点
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Arrival Time Reminder -->
+            <div class="time-reminder">
+                <h3>⏰ 建议到达时间</h3>
+                <div class="time-highlight">{{ arrival_time | chinese_time }}</div>
+                <p>请提前30分钟到达，为服事做好充分准备</p>
+            </div>
+
+            <!-- Your Assignments -->
+            <div class="assignments-section">
+                <div class="assignments-title">🎯 您的服事安排</div>
+                
+                {% for service_type, person in sunday_schedule.roles.items() %}
+                <div class="assignment-card">
+                    <div class="assignment-role">{{ service_type }}</div>
+                    <div class="assignment-person">👤 {{ person }}</div>
+                    {% if sunday_schedule.notes %}
+                    <div class="assignment-note">备注: {{ sunday_schedule.notes }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                
+                <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                    共 <strong>{{ assignments_count }}</strong> 个服事安排
+                </p>
+            </div>
+            {% else %}
+            <div style="text-align: center; padding: 40px; color: #666;">
+                <h3>暂无明日服事安排</h3>
+                <p>感谢您对事工的关注，如有疑问请联系协调员。</p>
+            </div>
+            {% endif %}
+
+            <!-- Preparation Checklist -->
+            <div class="preparation-checklist">
+                <h4>📋 服事准备清单</h4>
+                <div class="checklist-item">提前查看聚会流程和服事要求</div>
+                <div class="checklist-item">准备好所需的物品和设备</div>
+                <div class="checklist-item">确认到达时间和交通安排</div>
+                <div class="checklist-item">为服事祷告，求神赐力量和智慧</div>
+                <div class="checklist-item">如有问题，及时联系协调员</div>
+            </div>
+
+            <!-- Weather Note -->
+            <div class="weather-note">
+                💡 <strong>温馨提示:</strong> 请关注明日天气，合理安排出行时间。建议提前出发以免迟到。
+            </div>
+
+            <!-- Emergency Contact -->
+            <div class="contact-info">
+                <h4>📞 紧急联系方式</h4>
+                <p><strong>事工协调员:</strong> 如果明早有紧急情况无法服事，请立即联系</p>
+                <p><strong>教会电话:</strong> 请在聚会前30分钟内联系</p>
+                <p><em>我们会尽力安排替补，但请尽可能提前通知</em></p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h3>🙏 为您的服事感恩</h3>
+            <p>感谢您忠心的服事和对神家的委身</p>
+            <p>愿神亲自纪念您的辛劳，赐福您的服事</p>
+            <p>此邮件由事工管理系统自动发送 · {{ generated_at.strftime('%Y年%m月%d日 %H:%M') }}</p>
+        </div>
+    </div>
+</body>
+</html>
