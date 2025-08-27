@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ church_name }} - 微信群通知模板</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #2E5984 0%, #4A90B8 100%);
+            color: #ffffff;
+            padding: 25px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .header p {
+            margin: 8px 0 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .instruction {
+            background-color: #e8f5e8;
+            border: 1px solid #28a745;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .instruction h3 {
+            margin: 0 0 15px 0;
+            color: #155724;
+            font-size: 18px;
+        }
+        .instruction ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .instruction li {
+            margin-bottom: 8px;
+            color: #155724;
+        }
+        .wechat-template {
+            background-color: #f8f9fa;
+            border: 2px solid #F4B942;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            position: relative;
+        }
+        .template-header {
+            background-color: #F4B942;
+            color: #ffffff;
+            padding: 10px 15px;
+            margin: -20px -20px 15px -20px;
+            font-weight: bold;
+            font-size: 16px;
+            border-radius: 6px 6px 0 0;
+        }
+        .wechat-content {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.8;
+            white-space: pre-line;
+            background-color: #ffffff;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+            color: #333;
+        }
+        .copy-button {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .copy-button:hover {
+            background-color: #218838;
+        }
+        .notes {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+        }
+        .notes h4 {
+            margin: 0 0 10px 0;
+            color: #856404;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                margin: 0;
+                box-shadow: none;
+                border-radius: 0;
+            }
+            .header, .content, .footer {
+                padding: 20px 15px;
+            }
+            .copy-button {
+                position: static;
+                margin-bottom: 10px;
+                display: block;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📱 微信群通知模板</h1>
+            <p>{{ church_name }} - 本周事工安排确认</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Instructions -->
+            <div class="instruction">
+                <h3>📋 使用说明</h3>
+                <ol>
+                    <li>点击下方"复制"按钮复制微信群通知内容</li>
+                    <li>打开微信群聊天窗口</li>
+                    <li>粘贴并发送通知</li>
+                    <li>如需修改，可以在微信中直接编辑后发送</li>
+                </ol>
+            </div>
+
+            <!-- WeChat Template -->
+            <div class="wechat-template">
+                <div class="template-header">
+                    📅 微信群通知内容
+                    <button class="copy-button" onclick="copyToClipboard()">📋 复制</button>
+                </div>
+                <div class="wechat-content" id="wechat-message">{{ wechat_message }}</div>
+            </div>
+
+            <!-- Additional Notes -->
+            <div class="notes">
+                <h4>⚠️ 温馨提示</h4>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>建议在发送前再次确认人员信息是否正确</li>
+                    <li>如果有临时调整，请及时更新群通知</li>
+                    <li>可以在微信中添加额外的个人备注或提醒</li>
+                    <li>发送时间建议：周三晚上 8:00 PM</li>
+                </ul>
+            </div>
+
+            <!-- Service Details Summary -->
+            {% if assignment %}
+            <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+                <h4 style="margin: 0 0 15px 0; color: #2E5984;">📊 本周安排统计</h4>
+                <div style="display: flex; justify-content: space-around; text-align: center;">
+                    <div>
+                        <div style="font-size: 20px; font-weight: bold; color: #2E5984;">{{ total_services }}</div>
+                        <div style="font-size: 12px; color: #666;">场聚会</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 20px; font-weight: bold; color: #2E5984;">{{ total_assignments }}</div>
+                        <div style="font-size: 12px; color: #666;">个服事</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 20px; font-weight: bold; color: #2E5984;">{{ unique_volunteers }}</div>
+                        <div style="font-size: 12px; color: #666;">位同工</div>
+                    </div>
+                </div>
+                
+                {% if volunteer_list %}
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+                    <strong>参与同工：</strong>
+                    <span style="color: #666;">{{ volunteer_list | join(', ') }}</span>
+                </div>
+                {% endif %}
+                
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+                    <strong>服事详情：</strong>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        {% if assignment.audio_tech %}
+                        <li><strong>音控：</strong>{{ assignment.audio_tech }}</li>
+                        {% endif %}
+                        {% if assignment.screen_operator %}
+                        <li><strong>屏幕：</strong>{{ assignment.screen_operator }}</li>
+                        {% endif %}
+                        {% if assignment.camera_operator %}
+                        <li><strong>摄像/导播：</strong>{{ assignment.camera_operator }}</li>
+                        {% endif %}
+                        {% if assignment.propresenter %}
+                        <li><strong>ProPresenter制作：</strong>{{ assignment.propresenter }}</li>
+                        {% endif %}
+                        {% if assignment.video_editor %}
+                        <li><strong>视频剪辑：</strong>{{ assignment.video_editor }}</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>{{ church_name }}</strong></p>
+            <p>此邮件由事工管理系统自动生成 · {{ generated_at.strftime('%Y年%m月%d日 %H:%M') }}</p>
+            <p>如有技术问题，请联系系统管理员</p>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard() {
+            const element = document.getElementById('wechat-message');
+            const text = element.textContent;
+            
+            // 使用现代浏览器的Clipboard API
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    showCopySuccess();
+                }, function(err) {
+                    fallbackCopyTextToClipboard(text);
+                });
+            } else {
+                fallbackCopyTextToClipboard(text);
+            }
+        }
+
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showCopySuccess();
+            } catch (err) {
+                alert('复制失败，请手动选择文本复制');
+            }
+            
+            document.body.removeChild(textArea);
+        }
+
+        function showCopySuccess() {
+            const button = document.querySelector('.copy-button');
+            const originalText = button.textContent;
+            button.textContent = '✅ 已复制';
+            button.style.backgroundColor = '#28a745';
+            
+            setTimeout(function() {
+                button.textContent = originalText;
+                button.style.backgroundColor = '#28a745';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
