@@ -1619,10 +1619,24 @@ def show_ics_calendar_management(data_result):
         st.error("❌ 无法加载数据，请先检查Google Sheets连接")
         return
     
-    assignments = data_result.get('assignments', [])
-    if not assignments:
+    schedules = data_result.get('schedules', [])
+    if not schedules:
         st.warning("⚠️ 未找到事工安排数据")
         return
+    
+    # 数据转换：将 MinistrySchedule 转换为 MinistryAssignment
+    def convert_schedule_to_assignment(schedule):
+        """将 MinistrySchedule 转换为 MinistryAssignment"""
+        return MinistryAssignment(
+            date=schedule.date,
+            audio_tech=schedule.audio_tech or "",
+            screen_operator="",  # MinistrySchedule 中没有这个字段
+            camera_operator=schedule.video_director or "",
+            propresenter=schedule.propresenter_play or "",
+            video_editor=schedule.propresenter_update or "靖铮"
+        )
+    
+    assignments = [convert_schedule_to_assignment(schedule) for schedule in schedules]
     
     # 创建标签页
     tab1, tab2, tab3, tab4 = st.tabs(["📋 日历生成", "🔗 订阅管理", "⚙️ 自动更新", "📊 系统状态"])
