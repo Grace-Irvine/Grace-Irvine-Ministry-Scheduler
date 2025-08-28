@@ -163,6 +163,12 @@ class NotificationTemplateManager:
     def render_weekly_confirmation(self, assignment: Optional[MinistryAssignment] = None) -> str:
         """渲染周三确认通知
         
+        周三确认通知只显示4种事工：
+        1. 音控
+        2. 导播/摄影
+        3. ProPresenter播放
+        4. ProPresenter更新
+        
         Args:
             assignment: 事工安排数据
             
@@ -172,29 +178,34 @@ class NotificationTemplateManager:
         if not assignment:
             return self.get_template('weekly_confirmation', 'no_assignment_template')
         
-        template = self.get_template('weekly_confirmation', 'template')
-        defaults = self.get_defaults('weekly_confirmation')
+        # 构建周三确认通知内容
+        content = f"【本周{assignment.date.month}月{assignment.date.day}日主日事工安排提醒】🕊️\n\n"
         
-        # 准备模板变量
-        template_vars = {
-            'month': assignment.date.month,
-            'day': assignment.date.day,
-            'audio_tech': assignment.audio_tech or defaults.get('audio_tech', '待安排'),
-            'screen_operator': assignment.screen_operator or defaults.get('screen_operator', '待安排'),
-            'camera_operator': assignment.camera_operator or defaults.get('camera_operator', '待安排'),
-            'propresenter': assignment.propresenter or defaults.get('propresenter', '待安排'),
-            'video_editor': assignment.video_editor or defaults.get('video_editor', '靖铮')
-        }
+        # 只显示指定的4种事工，且只显示有人员安排的
+        ministry_roles = [
+            ("音控", assignment.audio_tech),
+            ("导播/摄影", assignment.camera_operator),
+            ("ProPresenter播放", assignment.propresenter),
+            ("ProPresenter更新", assignment.video_editor)  # 视频剪辑对应ProPresenter更新
+        ]
         
-        try:
-            return template.format(**template_vars)
-        except Exception as e:
-            logger.error(f"Failed to render weekly confirmation template: {e}")
-            return self.get_template('weekly_confirmation', 'no_assignment_template')
+        for role_name, person_name in ministry_roles:
+            if person_name and person_name.strip():  # 只显示有人员的角色
+                content += f"• {role_name}：{person_name}\n"
+        
+        content += "\n请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏"
+        
+        return content
     
     def render_sunday_reminder(self, assignment: Optional[MinistryAssignment] = None) -> str:
         """渲染周六提醒通知
         
+        周六提醒通知显示4种事工：
+        1. 音控
+        2. 导播/摄影
+        3. ProPresenter播放
+        4. ProPresenter更新
+        
         Args:
             assignment: 事工安排数据
             
@@ -204,23 +215,26 @@ class NotificationTemplateManager:
         if not assignment:
             return self.get_template('sunday_reminder', 'no_assignment_template')
         
-        template = self.get_template('sunday_reminder', 'template')
-        defaults = self.get_defaults('sunday_reminder')
+        # 构建周六提醒通知内容
+        content = "【主日服事提醒】✨\n"
+        content += "明天 8:30布置/ 9:00彩排 / 10:00 正式敬拜\n"
+        content += "请各位同工提前到场：\n"
         
-        # 准备模板变量
-        template_vars = {
-            'audio_tech': assignment.audio_tech or defaults.get('audio_tech', '待安排'),
-            'screen_operator': assignment.screen_operator or defaults.get('screen_operator', '待安排'),
-            'camera_operator': assignment.camera_operator or defaults.get('camera_operator', '待安排'),
-            'propresenter': assignment.propresenter or defaults.get('propresenter', '待安排'),
-            'video_editor': assignment.video_editor or defaults.get('video_editor', '靖铮')
-        }
+        # 显示指定的4种事工，且只显示有人员安排的
+        ministry_roles = [
+            ("音控", assignment.audio_tech, "9:00到，随敬拜团排练"),
+            ("导播/摄影", assignment.camera_operator, "9:30到，检查摄影机水平，预设机位"),
+            ("ProPresenter播放", assignment.propresenter, "9:00到，随敬拜团排练"),
+            ("ProPresenter更新", assignment.video_editor, "提前准备内容")
+        ]
         
-        try:
-            return template.format(**template_vars)
-        except Exception as e:
-            logger.error(f"Failed to render sunday reminder template: {e}")
-            return self.get_template('sunday_reminder', 'no_assignment_template')
+        for role_name, person_name, arrival_instruction in ministry_roles:
+            if person_name and person_name.strip():  # 只显示有人员的角色
+                content += f"- {role_name}：{arrival_instruction}，{person_name}\n"
+        
+        content += "\n愿主同在，出入平安。若临时不适请第一时间私信我。🙌"
+        
+        return content
     
     def render_monthly_overview(self, assignments: list, year: int, month: int, sheet_url: str = "") -> str:
         """渲染月度总览通知
@@ -304,6 +318,115 @@ class NotificationTemplateManager:
         except Exception as e:
             logger.error(f"Failed to update templates: {e}")
             return False
+    
+    def preview_weekly_confirmation(self, assignment: Optional[MinistryAssignment] = None) -> Dict[str, Any]:
+        """预览周三确认通知的结构和内容
+        
+        Args:
+            assignment: 事工安排数据
+            
+        Returns:
+            包含预览信息的字典
+        """
+        preview_info = {
+            'template_type': '周三确认通知',
+            'description': '用于周三晚上发送的事工安排确认通知',
+            'included_roles': [
+                '音控',
+                '导播/摄影', 
+                'ProPresenter播放',
+                'ProPresenter更新'
+            ],
+            'excluded_roles': ['屏幕操作', '视频剪辑（固定人员）'],
+            'send_time': '周三晚上 20:00',
+            'purpose': '确认本周主日的事工安排，处理冲突调换'
+        }
+        
+        if assignment:
+            preview_info['sample_content'] = self.render_weekly_confirmation(assignment)
+            preview_info['data_mapping'] = {
+                '音控': assignment.audio_tech,
+                '导播/摄影': assignment.camera_operator,
+                'ProPresenter播放': assignment.propresenter,
+                'ProPresenter更新': assignment.video_editor
+            }
+        
+        return preview_info
+    
+    def preview_sunday_reminder(self, assignment: Optional[MinistryAssignment] = None) -> Dict[str, Any]:
+        """预览周六提醒通知的结构和内容
+        
+        Args:
+            assignment: 事工安排数据
+            
+        Returns:
+            包含预览信息的字典
+        """
+        preview_info = {
+            'template_type': '周六提醒通知',
+            'description': '用于周六晚上发送的主日服事提醒通知',
+            'included_roles': [
+                '音控',
+                '导播/摄影',
+                'ProPresenter播放',
+                'ProPresenter更新'
+            ],
+            'excluded_roles': ['屏幕操作', '视频剪辑'],
+            'send_time': '周六晚上 20:00',
+            'purpose': '提醒明日主日服事，确认到场时间和注意事项',
+            'arrival_times': {
+                '音控': '9:00到，随敬拜团排练',
+                '导播/摄影': '9:30到，检查摄影机水平，预设机位',
+                'ProPresenter播放': '9:00到，随敬拜团排练',
+                'ProPresenter更新': '提前准备内容'
+            }
+        }
+        
+        if assignment:
+            preview_info['sample_content'] = self.render_sunday_reminder(assignment)
+            preview_info['data_mapping'] = {
+                '音控': assignment.audio_tech,
+                '导播/摄影': assignment.camera_operator,
+                'ProPresenter播放': assignment.propresenter
+            }
+        
+        return preview_info
+    
+    def get_template_structure(self) -> Dict[str, Any]:
+        """获取模板结构概览
+        
+        Returns:
+            模板结构信息
+        """
+        return {
+            'template_types': {
+                'weekly_confirmation': {
+                    'name': '周三确认通知',
+                    'roles': ['音控', '导播/摄影', 'ProPresenter播放', 'ProPresenter更新'],
+                    'send_time': '周三 20:00',
+                    'method': 'render_weekly_confirmation()'
+                },
+                'sunday_reminder': {
+                    'name': '周六提醒通知',
+                    'roles': ['音控', '导播/摄影', 'ProPresenter播放', 'ProPresenter更新'],
+                    'send_time': '周六 20:00',
+                    'method': 'render_sunday_reminder()'
+                },
+                'monthly_overview': {
+                    'name': '月度总览通知',
+                    'roles': ['所有角色'],
+                    'send_time': '每月1日 09:00',
+                    'method': 'render_monthly_overview()'
+                }
+            },
+            'data_source': 'Google Sheets',
+            'configuration': {
+                'audio_tech': 'Q列 - 音控',
+                'camera_operator': 'S列 - 导播/摄影',
+                'propresenter': 'T列 - ProPresenter播放',
+                'video_editor': 'U列 - ProPresenter更新/视频剪辑'
+            }
+        }
 
 # 便捷函数
 def create_template_manager(template_file: str = "templates/notification_templates.yaml") -> NotificationTemplateManager:

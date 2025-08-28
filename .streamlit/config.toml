@@ -1,0 +1,25 @@
+[server]
+# Cloud Run 配置
+port = 8080
+address = "0.0.0.0"
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+# 禁用自动打开浏览器（云环境不需要）
+gatherUsageStats = false
+showErrorDetails = true
+
+[theme]
+# 应用主题配置
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[client]
+# 客户端配置
+toolbarMode = "viewer"
+showErrorDetails = true

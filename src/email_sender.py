@@ -64,8 +64,22 @@ class EmailSender:
     
     def _setup_template_engine(self):
         """设置Jinja2模板引擎"""
-        template_dir = Path(__file__).parent.parent / "templates" / "email"
-        if template_dir.exists():
+        # Try multiple possible template locations
+        possible_dirs = [
+            Path(__file__).parent.parent / "templates" / "email",  # Local development
+            Path(__file__).parent / "templates" / "email",  # Cloud function deployment
+            Path("templates") / "email",  # Current directory
+            Path("/workspace/templates/email"),  # Cloud Run
+        ]
+        
+        template_dir = None
+        for dir_path in possible_dirs:
+            if dir_path.exists():
+                template_dir = dir_path
+                logger.info(f"Found template directory at: {template_dir}")
+                break
+        
+        if template_dir and template_dir.exists():
             self.template_env = Environment(
                 loader=FileSystemLoader(str(template_dir)),
                 autoescape=True
@@ -75,7 +89,7 @@ class EmailSender:
             self.template_env.filters['chinese_time'] = self._format_chinese_time
             self.template_env.filters['chinese_weekday'] = self._format_chinese_weekday
         else:
-            logger.warning(f"Template directory not found: {template_dir}")
+            logger.warning(f"Template directory not found in any of these locations: {possible_dirs}")
             self.template_env = None
     
     def _format_chinese_date(self, date_obj: date) -> str:
