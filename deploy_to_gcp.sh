@@ -2,6 +2,7 @@
 """
 Google Cloud Platform 部署脚本
 Deploy Grace Irvine Ministry Scheduler to Google Cloud
+包含 Cloud Functions 和 Cloud Run 部署
 """
 
 set -e  # 遇到错误立即退出
@@ -16,6 +17,7 @@ NC='\033[0m' # No Color
 # 配置变量
 PROJECT_ID="ai-for-god"  # 使用现有项目
 REGION="us-central1"  # 选择离你最近的区域
+SERVICE_NAME="grace-irvine-scheduler"  # Cloud Run 服务名称
 SERVICE_ACCOUNT_EMAIL="scheduler-service@${PROJECT_ID}.iam.gserviceaccount.com"
 
 echo -e "${BLUE}🚀 开始部署 Grace Irvine Ministry Scheduler 到 Google Cloud${NC}"
@@ -45,6 +47,9 @@ gcloud services enable cloudscheduler.googleapis.com
 gcloud services enable secretmanager.googleapis.com
 gcloud services enable sheets.googleapis.com
 gcloud services enable gmail.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable containerregistry.googleapis.com
 
 # 5. 创建服务账号（如果不存在）
 echo -e "${BLUE}👤 创建服务账号${NC}"
@@ -167,7 +172,94 @@ else
         --description="Sunday reminder notification - every Saturday at 6 PM PST"
 fi
 
-# 11. 清理临时文件
+# 11. 部署 Cloud Run 应用（包含ICS日历功能）
+echo -e "${BLUE}🌐 部署 Cloud Run 应用${NC}"
+
+# 检查 Docker 是否已安装
+if ! command -v docker &> /dev/null; then
+    echo -e "${RED}❌ 错误: Docker 未安装${NC}"
+    echo "请访问 https://docs.docker.com/get-docker/ 安装 Docker"
+    exit 1
+fi
+
+# 配置 Docker 认证
+echo -e "${BLUE}🔑 配置 Docker 认证${NC}"
+gcloud auth configure-docker
+
+# 构建 Docker 镜像
+echo -e "${BLUE}🏗️  构建 Docker 镜像${NC}"
+IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
+echo "镜像名称: ${IMAGE_NAME}"
+
+# 使用 Cloud Build 构建镜像
+gcloud builds submit --tag ${IMAGE_NAME} .
+
+# 部署到 Cloud Run
+echo -e "${BLUE}☁️  部署到 Cloud Run${NC}"
+gcloud run deploy ${SERVICE_NAME} \
+    --image=${IMAGE_NAME} \
+    --platform=managed \
+    --region=${REGION} \
+    --allow-unauthenticated \
+    --service-account=${SERVICE_ACCOUNT_EMAIL} \
+    --memory=1Gi \
+    --cpu=1 \
+    --timeout=3600 \
+    --concurrency=80 \
+    --max-instances=10 \
+    --set-env-vars="STREAMLIT_SERVER_HEADLESS=true,STREAMLIT_SERVER_ENABLE_CORS=false,STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false" \
+    --port=8080
+
+# 12. 获取 Cloud Run 服务URL
+echo -e "${BLUE}🔗 获取 Cloud Run 服务访问URL${NC}"
+CLOUD_RUN_URL=$(gcloud run services describe ${SERVICE_NAME} --region=${REGION} --format="value(status.url)")
+
+echo -e "${GREEN}Cloud Run 服务URL: ${CLOUD_RUN_URL}${NC}"
+
+# 13. 更新 Cloud Scheduler 作业以包含ICS更新
+echo -e "${BLUE}📅 更新定时任务以包含ICS日历更新${NC}"
+
+# 创建ICS更新函数（如果不存在）
+echo -e "${YELLOW}📅 部署ICS日历更新函数${NC}"
+if ! gcloud functions describe update-ics-calendars --region=${REGION} &> /dev/null; then
+    gcloud functions deploy update-ics-calendars \
+        --gen2 \
+        --runtime=python311 \
+        --region=${REGION} \
+        --source=cloud_functions_deploy \
+        --entry-point=update_ics_calendars \
+        --trigger-http \
+        --allow-unauthenticated \
+        --service-account=${SERVICE_ACCOUNT_EMAIL} \
+        --memory=512MB \
+        --timeout=300s
+fi
+
+# 获取ICS更新函数URL
+ICS_UPDATE_URL=$(gcloud functions describe update-ics-calendars --region=${REGION} --format="value(serviceConfig.uri)")
+
+# 更新定时任务以同时调用邮件发送和ICS更新
+echo -e "${YELLOW}🔄 更新定时任务以包含ICS更新${NC}"
+
+# 更新周三确认任务
+gcloud scheduler jobs update http weekly-confirmation-job \
+    --location=${REGION} \
+    --schedule="0 10 * * 3" \
+    --time-zone="America/Los_Angeles" \
+    --uri=${WEEKLY_URL} \
+    --http-method=POST \
+    --description="Weekly confirmation notification + ICS update - every Wednesday at 10 AM PST"
+
+# 更新周六提醒任务
+gcloud scheduler jobs update http sunday-reminder-job \
+    --location=${REGION} \
+    --schedule="0 18 * * 6" \
+    --time-zone="America/Los_Angeles" \
+    --uri=${SUNDAY_URL} \
+    --http-method=POST \
+    --description="Sunday reminder notification + ICS update - every Saturday at 6 PM PST"
+
+# 14. 清理临时文件
 echo -e "${BLUE}🧹 清理临时文件${NC}"
 rm -rf cloud_functions_deploy
 
@@ -177,18 +269,36 @@ echo "======================================================================"
 echo -e "${BLUE}📋 部署摘要:${NC}"
 echo -e "  项目ID: ${PROJECT_ID}"
 echo -e "  区域: ${REGION}"
+echo -e "  Cloud Run 服务: ${SERVICE_NAME}"
 echo -e "  周三确认通知: 每周三上午10点 (太平洋时间)"
 echo -e "  周六提醒通知: 每周六下午6点 (太平洋时间)"
+echo ""
+echo -e "${BLUE}🔗 访问地址:${NC}"
+echo -e "  Streamlit Web界面: ${CLOUD_RUN_URL}"
+echo -e "  负责人日历订阅: ${CLOUD_RUN_URL}/calendars/grace_irvine_coordinator.ics"
+echo -e "  同工日历订阅: ${CLOUD_RUN_URL}/calendars/grace_irvine_workers.ics"
 echo ""
 echo -e "${YELLOW}⚠️  下一步操作:${NC}"
 echo "1. 在 Google Cloud Console 中设置环境变量 (Secret Manager)"
 echo "2. 配置 Google Sheets API 权限"
 echo "3. 测试函数是否正常工作"
+echo "4. 在日历应用中订阅ICS URL进行自动更新"
 echo ""
 echo -e "${BLUE}📚 查看日志:${NC}"
 echo "  gcloud functions logs read send-weekly-confirmation --region=${REGION}"
 echo "  gcloud functions logs read send-sunday-reminder --region=${REGION}"
+echo "  gcloud run services logs read ${SERVICE_NAME} --region=${REGION}"
 echo ""
 echo -e "${BLUE}🎯 手动触发测试:${NC}"
 echo "  curl -X POST ${WEEKLY_URL}"
 echo "  curl -X POST ${SUNDAY_URL}"
+echo "  curl ${CLOUD_RUN_URL}/calendars/grace_irvine_coordinator.ics"
+echo ""
+echo -e "${BLUE}🔗 获取ICS订阅URL:${NC}"
+echo "  python3 scripts/get_cloud_run_url.py"
+echo ""
+echo -e "${BLUE}📱 用户订阅指南:${NC}"
+echo "1. 运行: python3 scripts/get_cloud_run_url.py"
+echo "2. 复制显示的ICS订阅URL"
+echo "3. 在日历应用中订阅URL（Google Calendar、Apple Calendar、Outlook等）"
+echo "4. 日历将自动更新，无需手动操作"
