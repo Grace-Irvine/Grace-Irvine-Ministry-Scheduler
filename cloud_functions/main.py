@@ -418,3 +418,57 @@ def health_check(request: Request) -> tuple:
         'timestamp': datetime.now().isoformat(),
         'service': 'Grace Irvine Ministry Scheduler'
     }, ensure_ascii=False), 200
+
+@functions_framework.http
+def update_ics_calendars(request: Request) -> tuple:
+    """
+    专门用于更新ICS日历的Cloud Function
+    
+    Args:
+        request: HTTP请求对象
+        
+    Returns:
+        响应元组 (消息, 状态码)
+    """
+    try:
+        import tempfile
+        logger.info("开始执行ICS日历更新任务")
+        
+        # 加载配置
+        config = _load_config()
+        
+        # 初始化服务
+        temp_dir = tempfile.mkdtemp()
+        service_account_path = os.path.join(temp_dir, 'service_account.json')
+        
+        # 写入服务账号密钥
+        with open(service_account_path, 'w') as f:
+            f.write(config['service_account_key'])
+        
+        extractor = GoogleSheetsExtractor(config['google_spreadsheet_id'], service_account_path)
+        
+        # 更新ICS日历
+        ics_success = _update_ics_calendar(extractor)
+        
+        if ics_success:
+            logger.info("✅ 成功更新ICS日历")
+            return json.dumps({
+                'success': True,
+                'message': 'ICS日历更新成功',
+                'timestamp': datetime.now().isoformat()
+            }, ensure_ascii=False), 200
+        else:
+            logger.error("❌ 更新ICS日历失败")
+            return json.dumps({
+                'success': False,
+                'message': '更新ICS日历失败',
+                'timestamp': datetime.now().isoformat()
+            }, ensure_ascii=False), 500
+            
+    except Exception as e:
+        logger.error(f"执行ICS日历更新时出错: {e}")
+        return json.dumps({
+            'success': False,
+            'message': f'执行出错: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }, ensure_ascii=False), 500

@@ -1802,7 +1802,15 @@ def show_ics_calendar_management(data_result):
         st.markdown("#### 🔗 API端点")
         
         # 获取当前应用URL（如果在Cloud Run中）
-        cloud_run_url = os.getenv('CLOUD_RUN_URL', 'https://your-app-url.run.app')
+        cloud_run_url = os.getenv('CLOUD_RUN_URL', 'https://grace-irvine-scheduler-HASH-uc.a.run.app')
+        
+        # 如果在Cloud Run环境中，尝试自动检测URL
+        if 'K_SERVICE' in os.environ:
+            # 在Cloud Run中，构建URL
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'ai-for-god')
+            region = os.getenv('CLOUD_RUN_REGION', 'us-central1')
+            service_name = os.getenv('K_SERVICE', 'grace-irvine-scheduler')
+            cloud_run_url = f"https://{service_name}-HASH-{region}.a.run.app"
         
         api_endpoints = {
             "更新日历": f"{cloud_run_url}/api/update-calendars",

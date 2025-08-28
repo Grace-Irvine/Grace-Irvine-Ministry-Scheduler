@@ -4,7 +4,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: grace-irvine-ministry-scheduler
+  name: grace-irvine-scheduler
   annotations:
     run.googleapis.com/ingress: all
     run.googleapis.com/cpu-throttling: "false"
@@ -44,7 +44,7 @@ spec:
         
         # ICS日历配置
         - name: ICS_BASE_URL
-          value: "https://grace-irvine-ministry-scheduler-HASH-uc.a.run.app"
+          value: "https://grace-irvine-scheduler-HASH-uc.a.run.app"
         
         # Streamlit配置
         - name: STREAMLIT_SERVER_PORT
