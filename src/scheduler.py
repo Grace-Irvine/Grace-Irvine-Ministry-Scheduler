@@ -37,8 +37,12 @@ class MinistryAssignment:
 class GoogleSheetsExtractor:
     """Google Sheets 数据提取器"""
     
-    def __init__(self, spreadsheet_id: str, service_account_path: str = "configs/service_account.json", config_path: str = "configs/config.yaml"):
-        self.spreadsheet_id = spreadsheet_id
+    def __init__(self, spreadsheet_id: str = None, service_account_path: str = "configs/service_account.json", config_path: str = "configs/config.yaml"):
+        # 优先从环境变量读取spreadsheet_id
+        self.spreadsheet_id = spreadsheet_id or os.getenv('GOOGLE_SPREADSHEET_ID')
+        if not self.spreadsheet_id:
+            raise ValueError("Google Sheets ID not provided and not found in environment variable GOOGLE_SPREADSHEET_ID")
+        
         self.service_account_path = service_account_path
         self.config_path = config_path
         self.client = None
@@ -79,8 +83,27 @@ class GoogleSheetsExtractor:
     def _setup_client(self):
         """初始化 Google Sheets 客户端"""
         try:
-            if not Path(self.service_account_path).exists():
-                raise FileNotFoundError(f"Service account file not found: {self.service_account_path}")
+            # 首先尝试从环境变量读取服务账号密钥
+            service_account_key = os.getenv('GOOGLE_SERVICE_ACCOUNT_KEY')
+            
+            if service_account_key:
+                # 从环境变量读取JSON密钥
+                import json
+                import tempfile
+                
+                # 创建临时文件
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    f.write(service_account_key)
+                    temp_service_account_path = f.name
+                
+                logger.info(f"Using service account from environment variable (temp file: {temp_service_account_path})")
+                service_account_path = temp_service_account_path
+            elif Path(self.service_account_path).exists():
+                # 回退到本地文件
+                service_account_path = self.service_account_path
+                logger.info(f"Using local service account file: {self.service_account_path}")
+            else:
+                raise FileNotFoundError(f"Service account not found in environment variable or file: {self.service_account_path}")
             
             # 设置认证范围
             scopes = [
@@ -90,7 +113,7 @@ class GoogleSheetsExtractor:
             
             # 创建认证凭据
             credentials = Credentials.from_service_account_file(
-                self.service_account_path, 
+                service_account_path, 
                 scopes=scopes
             )
             
@@ -290,7 +313,11 @@ class NotificationGenerator:
         self.extractor = extractor
         # 如果没有提供模板管理器，则创建默认的
         if template_manager is None:
-            from .template_manager import get_default_template_manager
+            try:
+                from .template_manager import get_default_template_manager
+            except ImportError:
+                # For cloud functions deployment
+                from template_manager import get_default_template_manager
             template_manager = get_default_template_manager()
         self.template_manager = template_manager
     

@@ -15,15 +15,32 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 import json
 import io
+from typing import List, Dict, Any
+
+# 云环境配置（必须在其他导入之前）
+try:
+    import streamlit_cloud_config  # 自动设置云环境
+except ImportError:
+    pass
 
 # 导入我们的数据清洗模块
 from src.data_cleaner import FocusedDataCleaner
 from src.template_manager import NotificationTemplateManager
 from src.scheduler import GoogleSheetsExtractor, NotificationGenerator, MinistryAssignment
-from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
+# 导入ICS日历相关模块
+try:
+    from src.calendar_subscription_server import CalendarSubscriptionManager
+    ICS_AVAILABLE = True
+except ImportError:
+    ICS_AVAILABLE = False
+
+# 本地环境的环境变量加载
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # 页面配置
 st.set_page_config(
@@ -728,10 +745,34 @@ def generate_next_week_template(data_result):
         ["周三确认通知", "周六提醒通知", "月度总览通知"]
     )
     
+    # 使用统一的模板管理器
+    from src.template_manager import NotificationTemplateManager
+    from src.scheduler import NotificationGenerator
+    
+    template_manager = NotificationTemplateManager()
+    
     if template_type == "周三确认通知":
-        template = generate_wednesday_template_focused(next_sunday, next_week_schedule)
+        # 创建模拟的 assignment 对象
+        assignment = type('Assignment', (), {
+            'date': next_sunday,
+            'audio_tech': next_week_schedule.get_all_assignments().get('音控', ''),
+            'screen_operator': next_week_schedule.get_all_assignments().get('屏幕', ''),
+            'camera_operator': next_week_schedule.get_all_assignments().get('导播/摄影', ''),
+            'propresenter': next_week_schedule.get_all_assignments().get('ProPresenter播放', ''),
+            'video_editor': next_week_schedule.get_all_assignments().get('ProPresenter更新', '靖铮')
+        })()
+        template = template_manager.render_weekly_confirmation(assignment)
     elif template_type == "周六提醒通知":
-        template = generate_saturday_template_focused(next_sunday, next_week_schedule)
+        # 创建模拟的 assignment 对象
+        assignment = type('Assignment', (), {
+            'date': next_sunday,
+            'audio_tech': next_week_schedule.get_all_assignments().get('音控', ''),
+            'screen_operator': next_week_schedule.get_all_assignments().get('屏幕', ''),
+            'camera_operator': next_week_schedule.get_all_assignments().get('导播/摄影', ''),
+            'propresenter': next_week_schedule.get_all_assignments().get('ProPresenter播放', ''),
+            'video_editor': next_week_schedule.get_all_assignments().get('ProPresenter更新', '靖铮')
+        })()
+        template = template_manager.render_sunday_reminder(assignment)
     else:
         template = generate_monthly_template_focused(schedules)
     
@@ -1078,7 +1119,7 @@ def main():
         else:
             default_page = "📊 数据概览"
         
-        page_options = ["📊 数据概览", "🔍 数据查看器", "📝 模板生成器", "🛠️ 模板编辑器", "⚙️ 系统设置"]
+        page_options = ["📊 数据概览", "🔍 数据查看器", "📝 模板生成器", "🛠️ 模板编辑器", "📅 ICS日历管理", "⚙️ 系统设置"]
         default_index = page_options.index(default_page) if default_page in page_options else 0
         
         page = st.selectbox(
@@ -1127,6 +1168,9 @@ def main():
     
     elif page == "🛠️ 模板编辑器":
         show_template_editor()
+    
+    elif page == "📅 ICS日历管理":
+        show_ics_calendar_management(data_result)
     
     elif page == "⚙️ 系统设置":
         show_settings()
@@ -1560,6 +1604,651 @@ def send_template_email(template_content, template_type, service_date=None):
         # 显示错误详情（仅在调试时）
         with st.expander("🔧 错误详情", expanded=False):
             st.code(str(e))
+
+def show_ics_calendar_management(data_result):
+    """显示ICS日历管理页面"""
+    st.header("📅 ICS日历管理")
+    st.markdown("管理事工通知的ICS日历，支持自动订阅和更新")
+    
+    if not ICS_AVAILABLE:
+        st.error("❌ ICS日历功能不可用")
+        st.info("请安装依赖: pip install icalendar pytz schedule")
+        return
+    
+    if not data_result or not data_result.get('success', False):
+        st.error("❌ 无法加载数据，请先检查Google Sheets连接")
+        return
+    
+    schedules = data_result.get('schedules', [])
+    if not schedules:
+        st.warning("⚠️ 未找到事工安排数据")
+        return
+    
+    # 数据转换：将 MinistrySchedule 转换为 MinistryAssignment
+    def convert_schedule_to_assignment(schedule):
+        """将 MinistrySchedule 转换为 MinistryAssignment"""
+        return MinistryAssignment(
+            date=schedule.date,
+            audio_tech=schedule.audio_tech or "",
+            screen_operator="",  # MinistrySchedule 中没有这个字段
+            camera_operator=schedule.video_director or "",
+            propresenter=schedule.propresenter_play or "",
+            video_editor=schedule.propresenter_update or "靖铮"
+        )
+    
+    assignments = [convert_schedule_to_assignment(schedule) for schedule in schedules]
+    
+    # 创建标签页
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 日历生成", "🔗 订阅管理", "⚙️ 自动更新", "📊 系统状态"])
+    
+    with tab1:
+        st.subheader("📅 生成ICS日历文件")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 👨‍💼 负责人日历")
+            st.info("包含通知发送提醒事件（周三、周六、月初）")
+            
+            if st.button("🔄 生成负责人日历", use_container_width=True):
+                with st.spinner("正在生成负责人日历..."):
+                    try:
+                        coordinator_ics = generate_coordinator_calendar_content(assignments)
+                        
+                        if coordinator_ics:
+                            st.success("✅ 负责人日历生成成功！")
+                            
+                            # 提供下载
+                            st.download_button(
+                                label="📥 下载负责人日历",
+                                data=coordinator_ics,
+                                file_name=f"grace_irvine_coordinator_{datetime.now().strftime('%Y%m%d')}.ics",
+                                mime="text/calendar",
+                                use_container_width=True
+                            )
+                            
+                            # 显示统计信息
+                            event_count = coordinator_ics.count("BEGIN:VEVENT")
+                            st.metric("📊 事件数量", event_count)
+                            
+                        else:
+                            st.error("❌ 生成失败")
+                            
+                    except Exception as e:
+                        st.error(f"❌ 生成失败: {e}")
+        
+        with col2:
+            st.markdown("#### 👥 同工日历")
+            st.info("包含个人服事安排事件（彩排、正式服事）")
+            
+            if st.button("🔄 生成同工日历", use_container_width=True):
+                with st.spinner("正在生成同工日历..."):
+                    try:
+                        workers_ics = generate_workers_calendar_content(assignments)
+                        
+                        if workers_ics:
+                            st.success("✅ 同工日历生成成功！")
+                            
+                            # 提供下载
+                            st.download_button(
+                                label="📥 下载同工日历",
+                                data=workers_ics,
+                                file_name=f"grace_irvine_workers_{datetime.now().strftime('%Y%m%d')}.ics",
+                                mime="text/calendar",
+                                use_container_width=True
+                            )
+                            
+                            # 显示统计信息
+                            event_count = workers_ics.count("BEGIN:VEVENT")
+                            st.metric("📊 事件数量", event_count)
+                            
+                        else:
+                            st.error("❌ 生成失败")
+                            
+                    except Exception as e:
+                        st.error(f"❌ 生成失败: {e}")
+        
+        # 个人日历生成
+        st.markdown("#### 👤 个人日历")
+        
+        # 获取同工列表
+        workers = get_worker_list(assignments)
+        if workers:
+            selected_worker = st.selectbox("选择同工", [""] + sorted(workers))
+            
+            if selected_worker:
+                if st.button(f"🔄 生成 {selected_worker} 的个人日历", use_container_width=True):
+                    with st.spinner(f"正在生成 {selected_worker} 的个人日历..."):
+                        try:
+                            personal_ics = generate_personal_calendar_content(assignments, selected_worker)
+                            
+                            if personal_ics:
+                                st.success(f"✅ {selected_worker} 的个人日历生成成功！")
+                                
+                                # 提供下载
+                                st.download_button(
+                                    label=f"📥 下载 {selected_worker} 的个人日历",
+                                    data=personal_ics,
+                                    file_name=f"grace_irvine_{selected_worker}_{datetime.now().strftime('%Y%m%d')}.ics",
+                                    mime="text/calendar",
+                                    use_container_width=True
+                                )
+                                
+                                # 显示统计信息
+                                event_count = personal_ics.count("BEGIN:VEVENT")
+                                st.metric("📊 事件数量", event_count)
+                                
+                            else:
+                                st.error("❌ 生成失败")
+                                
+                        except Exception as e:
+                            st.error(f"❌ 生成失败: {e}")
+    
+    with tab2:
+        st.subheader("🔗 日历订阅管理")
+        
+        st.markdown("""
+        ### 📱 自动更新订阅方式
+        
+        为了实现双击添加后自动更新，请使用以下订阅方式：
+        """)
+        
+        # 方案1: 静态文件订阅
+        st.markdown("#### 方案1: 静态文件订阅 (推荐)")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.info("""
+            **优点**: 简单、稳定、兼容性好
+            **适用**: 所有主流日历应用
+            **更新**: 通过定时任务自动更新文件
+            """)
+        
+        with col2:
+            if st.button("🔄 更新静态文件", use_container_width=True):
+                with st.spinner("正在更新静态日历文件..."):
+                    try:
+                        # 生成静态文件
+                        coordinator_ics = generate_coordinator_calendar_content(assignments)
+                        workers_ics = generate_workers_calendar_content(assignments)
+                        
+                        # 保存到固定文件名
+                        calendar_dir = Path("calendars")
+                        calendar_dir.mkdir(exist_ok=True)
+                        
+                        with open(calendar_dir / "grace_irvine_coordinator.ics", 'w', encoding='utf-8') as f:
+                            f.write(coordinator_ics)
+                        
+                        with open(calendar_dir / "grace_irvine_workers.ics", 'w', encoding='utf-8') as f:
+                            f.write(workers_ics)
+                        
+                        st.success("✅ 静态文件更新完成！")
+                        
+                    except Exception as e:
+                        st.error(f"❌ 更新失败: {e}")
+        
+        # 显示订阅URL和Cloud Scheduler集成
+        st.markdown("#### 📡 Cloud Scheduler集成")
+        
+        st.info("""
+        **✅ 已集成Cloud Scheduler**
+        - 周三和周六的触发器已在Cloud Scheduler中设置
+        - 系统会自动调用API端点更新ICS文件
+        - 无需容器内后台服务
+        """)
+        
+        # API端点信息
+        st.markdown("#### 🔗 API端点")
+        
+        # 获取当前应用URL（如果在Cloud Run中）
+        cloud_run_url = os.getenv('CLOUD_RUN_URL', 'https://grace-irvine-scheduler-HASH-uc.a.run.app')
+        
+        # 如果在Cloud Run环境中，尝试自动检测URL
+        if 'K_SERVICE' in os.environ:
+            # 在Cloud Run中，构建URL
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'ai-for-god')
+            region = os.getenv('CLOUD_RUN_REGION', 'us-central1')
+            service_name = os.getenv('K_SERVICE', 'grace-irvine-scheduler')
+            cloud_run_url = f"https://{service_name}-HASH-{region}.a.run.app"
+        
+        api_endpoints = {
+            "更新日历": f"{cloud_run_url}/api/update-calendars",
+            "系统状态": f"{cloud_run_url}/api/status",
+            "负责人日历": f"{cloud_run_url}/calendars/grace_irvine_coordinator.ics",
+            "同工日历": f"{cloud_run_url}/calendars/grace_irvine_workers.ics"
+        }
+        
+        for endpoint_name, url in api_endpoints.items():
+            st.code(f"{endpoint_name}: {url}")
+        
+        # 手动触发更新
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🔄 触发后台服务更新", use_container_width=True):
+                with st.spinner("正在调用后台服务..."):
+                    try:
+                        import requests
+                        # 调用本地后台服务API
+                        response = requests.post("http://localhost:5000/api/update-calendars", timeout=30)
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success("✅ 后台服务更新成功！")
+                            st.json(result)
+                        else:
+                            st.error(f"❌ 后台服务更新失败: {response.status_code}")
+                            
+                    except Exception as e:
+                        st.error(f"❌ 调用后台服务失败: {e}")
+        
+        with col2:
+            if st.button("📊 查看后台服务状态", use_container_width=True):
+                try:
+                    import requests
+                    response = requests.get("http://localhost:5000/api/status", timeout=10)
+                    
+                    if response.status_code == 200:
+                        status = response.json()
+                        st.success("✅ 后台服务运行正常")
+                        
+                        # 显示关键信息
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.metric("服务状态", status.get('status', '未知'))
+                        with col_b:
+                            last_update = status.get('last_update')
+                            if last_update:
+                                update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                                st.metric("最后更新", update_time.strftime('%H:%M:%S'))
+                        
+                        # 显示详细状态
+                        with st.expander("📋 详细状态"):
+                            st.json(status)
+                    else:
+                        st.error("❌ 后台服务无响应")
+                        
+                except Exception as e:
+                    st.error(f"❌ 无法连接后台服务: {e}")
+                    st.info("💡 后台服务可能正在启动中，请稍后重试")
+        
+        # 订阅链接
+        if st.checkbox("📱 显示订阅链接"):
+            st.markdown("#### 📋 用户订阅链接")
+            
+            coordinator_url = f"{cloud_run_url}/calendars/grace_irvine_coordinator.ics"
+            workers_url = f"{cloud_run_url}/calendars/grace_irvine_workers.ics"
+            
+            st.code(f"负责人日历: {coordinator_url}")
+            st.code(f"同工日历: {workers_url}")
+            
+            st.markdown("""
+            **📱 订阅方法:**
+            1. **Google Calendar**: 左侧"+" → "从URL添加" → 粘贴链接
+            2. **Apple Calendar**: "文件" → "新建日历订阅" → 输入URL  
+            3. **Outlook**: "添加日历" → "从Internet订阅" → 输入URL
+            
+            ⚠️ **重要**: 请使用"订阅URL"而不是"导入文件"，这样才能自动更新
+            """)
+    
+    with tab3:
+        st.subheader("⚙️ 自动更新设置")
+        
+        st.markdown("""
+        ### 🔄 自动更新机制
+        
+        为确保日历内容始终最新，需要设置自动更新：
+        """)
+        
+        # 更新频率设置
+        update_frequency = st.selectbox(
+            "更新频率",
+            ["每小时", "每30分钟", "每2小时", "每6小时", "每12小时"],
+            index=0
+        )
+        
+        frequency_map = {
+            "每小时": "0 * * * *",
+            "每30分钟": "*/30 * * * *", 
+            "每2小时": "0 */2 * * *",
+            "每6小时": "0 */6 * * *",
+            "每12小时": "0 */12 * * *"
+        }
+        
+        cron_expression = frequency_map[update_frequency]
+        
+        st.markdown("#### 🖥️ 服务器端设置")
+        
+        st.markdown("**Cron任务设置:**")
+        st.code(f"{cron_expression} cd /path/to/project && python3 scripts/update_static_calendars.py")
+        
+        st.markdown("**Docker部署:**")
+        st.code("""
+# 在Dockerfile中添加
+COPY scripts/ ./scripts/
+RUN pip install icalendar pytz schedule
+
+# 启动时同时运行更新服务
+CMD python3 scripts/update_static_calendars.py --watch & streamlit run streamlit_app.py --server.port=8080
+        """)
+        
+        # 手动触发更新
+        st.markdown("#### 🔧 手动更新")
+        
+        if st.button("🔄 立即更新所有日历文件", type="primary", use_container_width=True):
+            with st.spinner("正在更新所有日历文件..."):
+                try:
+                    # 更新静态文件
+                    coordinator_ics = generate_coordinator_calendar_content(assignments)
+                    workers_ics = generate_workers_calendar_content(assignments)
+                    
+                    # 保存文件
+                    calendar_dir = Path("calendars")
+                    calendar_dir.mkdir(exist_ok=True)
+                    
+                    files_updated = []
+                    
+                    # 保存负责人日历
+                    coord_file = calendar_dir / "grace_irvine_coordinator.ics"
+                    with open(coord_file, 'w', encoding='utf-8') as f:
+                        f.write(coordinator_ics)
+                    files_updated.append(f"负责人日历 ({coordinator_ics.count('BEGIN:VEVENT')} 个事件)")
+                    
+                    # 保存同工日历
+                    workers_file = calendar_dir / "grace_irvine_workers.ics"
+                    with open(workers_file, 'w', encoding='utf-8') as f:
+                        f.write(workers_ics)
+                    files_updated.append(f"同工日历 ({workers_ics.count('BEGIN:VEVENT')} 个事件)")
+                    
+                    # 保存时间戳文件
+                    timestamp_file = calendar_dir / "last_update.txt"
+                    with open(timestamp_file, 'w') as f:
+                        f.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                    
+                    st.success("✅ 所有日历文件更新完成！")
+                    
+                    for file_info in files_updated:
+                        st.write(f"📋 {file_info}")
+                    
+                    st.info(f"🕒 更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                except Exception as e:
+                    st.error(f"❌ 更新失败: {e}")
+    
+    with tab4:
+        st.subheader("📊 ICS系统状态")
+        
+        # 显示文件状态
+        calendar_dir = Path("calendars")
+        if calendar_dir.exists():
+            st.markdown("#### 📁 日历文件状态")
+            
+            ics_files = list(calendar_dir.glob("*.ics"))
+            if ics_files:
+                files_data = []
+                for file_path in ics_files:
+                    try:
+                        stat = file_path.stat()
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        files_data.append({
+                            "文件名": file_path.name,
+                            "大小": f"{stat.st_size / 1024:.1f} KB",
+                            "事件数量": content.count("BEGIN:VEVENT"),
+                            "最后修改": datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                        })
+                    except Exception as e:
+                        files_data.append({
+                            "文件名": file_path.name,
+                            "大小": "错误",
+                            "事件数量": "错误", 
+                            "最后修改": f"读取失败: {e}"
+                        })
+                
+                st.dataframe(files_data, use_container_width=True)
+            else:
+                st.info("📁 未找到ICS日历文件")
+        
+        # 显示系统组件状态
+        st.markdown("#### 🔧 系统组件状态")
+        
+        components_status = {
+            "Google Sheets连接": "✅ 正常" if data_result.get('success') else "❌ 异常",
+            "模板管理器": "✅ 正常" if data_result.get('success') else "❌ 异常",
+            "ICS日历功能": "✅ 可用" if ICS_AVAILABLE else "❌ 不可用",
+            "数据记录数": len(assignments) if assignments else 0
+        }
+        
+        for component, status in components_status.items():
+            st.write(f"**{component}**: {status}")
+        
+        # 显示最后更新时间
+        timestamp_file = calendar_dir / "last_update.txt"
+        if timestamp_file.exists():
+            try:
+                with open(timestamp_file, 'r') as f:
+                    last_update = f.read().strip()
+                st.info(f"🕒 最后更新时间: {last_update}")
+            except:
+                pass
+
+def generate_coordinator_calendar_content(assignments) -> str:
+    """生成负责人日历ICS内容"""
+    try:
+        from src.template_manager import get_default_template_manager
+        
+        template_manager = get_default_template_manager()
+        
+        ics_lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0", 
+            "PRODID:-//Grace Irvine Ministry Scheduler//Coordinator Calendar//CN",
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+            "X-WR-CALNAME:Grace Irvine 事工协调日历",
+            "X-WR-CALDESC:事工通知发送提醒日历（自动更新）",
+            "X-WR-TIMEZONE:America/Los_Angeles",
+            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ]
+        
+        today = date.today()
+        future_assignments = [a for a in assignments if a.date >= today][:15]
+        
+        for assignment in future_assignments:
+            # 周三确认通知事件
+            wednesday = assignment.date - timedelta(days=4)
+            if wednesday >= today - timedelta(days=7):
+                try:
+                    notification_content = template_manager.render_weekly_confirmation(assignment)
+                    event_ics = create_simple_ics_event(
+                        uid=f"weekly_confirmation_{wednesday.strftime('%Y%m%d')}@graceirvine.org",
+                        summary=f"发送周末确认通知 ({assignment.date.month}/{assignment.date.day})",
+                        description=f"发送内容：\n\n{notification_content}",
+                        start_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=0)),
+                        end_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=30)),
+                        location="Grace Irvine 教会"
+                    )
+                    ics_lines.append(event_ics)
+                except Exception:
+                    pass
+            
+            # 周六提醒通知事件
+            saturday = assignment.date - timedelta(days=1)
+            if saturday >= today - timedelta(days=7):
+                try:
+                    notification_content = template_manager.render_sunday_reminder(assignment)
+                    event_ics = create_simple_ics_event(
+                        uid=f"sunday_reminder_{saturday.strftime('%Y%m%d')}@graceirvine.org",
+                        summary=f"发送主日提醒通知 ({assignment.date.month}/{assignment.date.day})",
+                        description=f"发送内容：\n\n{notification_content}",
+                        start_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=0)),
+                        end_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=30)),
+                        location="Grace Irvine 教会"
+                    )
+                    ics_lines.append(event_ics)
+                except Exception:
+                    pass
+        
+        ics_lines.append("END:VCALENDAR")
+        return "\n".join(ics_lines)
+        
+    except Exception as e:
+        st.error(f"生成负责人日历时出错: {e}")
+        return None
+
+def generate_workers_calendar_content(assignments) -> str:
+    """生成同工日历ICS内容"""
+    try:
+        ics_lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//Grace Irvine Ministry Scheduler//Workers Calendar//CN", 
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+            "X-WR-CALNAME:Grace Irvine 同工服事日历",
+            "X-WR-CALDESC:同工事工服事安排日历（自动更新）",
+            "X-WR-TIMEZONE:America/Los_Angeles",
+            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ]
+        
+        today = date.today()
+        future_assignments = [a for a in assignments if a.date >= today][:10]
+        
+        for assignment in future_assignments:
+            service_roles = [
+                ("音控", assignment.audio_tech, "09:00", "12:00"),
+                ("导播/摄影", assignment.camera_operator, "09:30", "12:00"), 
+                ("ProPresenter播放", assignment.propresenter, "09:00", "12:00")
+            ]
+            
+            for role_name, person_name, start_time, end_time in service_roles:
+                if person_name and person_name.strip():
+                    try:
+                        start_hour, start_minute = map(int, start_time.split(':'))
+                        end_hour, end_minute = map(int, end_time.split(':'))
+                        
+                        event_ics = create_simple_ics_event(
+                            uid=f"service_{role_name}_{assignment.date.strftime('%Y%m%d')}_{person_name}@graceirvine.org",
+                            summary=f"主日服事 - {role_name}",
+                            description=f"角色：{role_name}\n负责人：{person_name}\n到场时间：{start_time}\n\n愿主同在，出入平安！",
+                            start_dt=datetime.combine(assignment.date, datetime.min.time().replace(hour=start_hour, minute=start_minute)),
+                            end_dt=datetime.combine(assignment.date, datetime.min.time().replace(hour=end_hour, minute=end_minute)),
+                            location="Grace Irvine 教会"
+                        )
+                        ics_lines.append(event_ics)
+                    except Exception:
+                        pass
+        
+        ics_lines.append("END:VCALENDAR")
+        return "\n".join(ics_lines)
+        
+    except Exception as e:
+        st.error(f"生成同工日历时出错: {e}")
+        return None
+
+def generate_personal_calendar_content(assignments, worker_name: str) -> str:
+    """生成个人日历ICS内容"""
+    try:
+        ics_lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//Grace Irvine Ministry Scheduler//Personal Calendar//CN",
+            "CALSCALE:GREGORIAN", 
+            "METHOD:PUBLISH",
+            f"X-WR-CALNAME:{worker_name} - Grace Irvine 个人服事日历",
+            f"X-WR-CALDESC:{worker_name}的个人事工服事安排（自动更新）",
+            "X-WR-TIMEZONE:America/Los_Angeles",
+            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ]
+        
+        today = date.today()
+        future_assignments = [a for a in assignments if a.date >= today]
+        
+        for assignment in future_assignments:
+            # 检查该同工是否参与此次服事
+            worker_roles = []
+            if assignment.audio_tech == worker_name:
+                worker_roles.append(("音控", "09:00", "12:00"))
+            if assignment.camera_operator == worker_name:
+                worker_roles.append(("导播/摄影", "09:30", "12:00"))
+            if assignment.propresenter == worker_name:
+                worker_roles.append(("ProPresenter播放", "09:00", "12:00"))
+            if assignment.video_editor == worker_name:
+                worker_roles.append(("ProPresenter更新", "09:00", "12:00"))
+            
+            for role_name, start_time, end_time in worker_roles:
+                try:
+                    start_hour, start_minute = map(int, start_time.split(':'))
+                    end_hour, end_minute = map(int, end_time.split(':'))
+                    
+                    event_ics = create_simple_ics_event(
+                        uid=f"personal_{role_name}_{assignment.date.strftime('%Y%m%d')}_{worker_name}@graceirvine.org",
+                        summary=f"我的服事 - {role_name}",
+                        description=f"角色：{role_name}\n日期：{assignment.date}\n到场时间：{start_time}\n\n愿主同在，出入平安！",
+                        start_dt=datetime.combine(assignment.date, datetime.min.time().replace(hour=start_hour, minute=start_minute)),
+                        end_dt=datetime.combine(assignment.date, datetime.min.time().replace(hour=end_hour, minute=end_minute)),
+                        location="Grace Irvine 教会"
+                    )
+                    ics_lines.append(event_ics)
+                except Exception:
+                    pass
+        
+        ics_lines.append("END:VCALENDAR")
+        return "\n".join(ics_lines)
+        
+    except Exception as e:
+        st.error(f"生成 {worker_name} 个人日历时出错: {e}")
+        return None
+
+def create_simple_ics_event(uid: str, summary: str, description: str, 
+                           start_dt: datetime, end_dt: datetime, location: str = "") -> str:
+    """创建简单的ICS事件"""
+    def escape_ics_text(text: str) -> str:
+        text = text.replace('\\', '\\\\')
+        text = text.replace(',', '\\,')
+        text = text.replace(';', '\\;')
+        text = text.replace('\n', '\\n')
+        return text
+    
+    start_str = start_dt.strftime('%Y%m%dT%H%M%S')
+    end_str = end_dt.strftime('%Y%m%dT%H%M%S')
+    dtstamp_str = datetime.now().strftime('%Y%m%dT%H%M%S')
+    
+    event_lines = [
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{dtstamp_str}",
+        f"DTSTART:{start_str}",
+        f"DTEND:{end_str}",
+        f"SUMMARY:{escape_ics_text(summary)}",
+        f"DESCRIPTION:{escape_ics_text(description)}",
+        f"LOCATION:{escape_ics_text(location)}",
+        "BEGIN:VALARM",
+        "ACTION:DISPLAY",
+        f"DESCRIPTION:提醒：{escape_ics_text(summary)}",
+        "TRIGGER:-PT30M",
+        "END:VALARM",
+        "END:VEVENT"
+    ]
+    
+    return "\n".join(event_lines)
+
+def get_worker_list(assignments) -> List[str]:
+    """获取同工名单"""
+    workers = set()
+    for assignment in assignments:
+        if assignment.audio_tech and assignment.audio_tech.strip():
+            workers.add(assignment.audio_tech)
+        if assignment.camera_operator and assignment.camera_operator.strip():
+            workers.add(assignment.camera_operator)
+        if assignment.propresenter and assignment.propresenter.strip():
+            workers.add(assignment.propresenter)
+        if assignment.video_editor and assignment.video_editor.strip():
+            workers.add(assignment.video_editor)
+    
+    return list(workers)
 
 if __name__ == "__main__":
     main()
