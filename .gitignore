@@ -222,3 +222,4 @@ k8s/
 # Local development overrides
 docker-compose.override.yml
 local_settings.py
+/calendars

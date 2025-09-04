@@ -17,6 +17,9 @@
 - **🔍 数据分析**: 实时数据质量监控和统计分析
 - **📅 排程预览**: 查看近期排班安排，智能识别冲突和空缺
 - **📥 数据导出**: 支持 Excel 和 CSV 格式导出
+- **📅 ICS日历订阅**: 自动生成日历文件，支持Google Calendar、Apple Calendar等订阅
+- **🔗 静态文件服务**: FastAPI提供高性能的文件下载服务
+- **☁️ Cloud Run部署**: 企业级云端部署，自动扩缩容
 
 ## 📁 项目结构
 
@@ -86,17 +89,66 @@ GOOGLE_SPREADSHEET_ID=your_spreadsheet_id_here
 
 ### 4. 启动应用
 
-#### Web界面（推荐）
+#### 方法1: 一键启动（推荐）
 
 ```bash
-# Mac/Linux
-python scripts/run_streamlit.py
+# 启动完整服务（包含ICS日历订阅）
+python3 start_service.py
+```
 
-# 或直接运行
+#### 方法2: FastAPI服务
+
+```bash
+# 启动FastAPI静态文件服务
+python3 app_with_static_routes.py
+```
+
+#### 方法3: 传统Streamlit界面
+
+```bash
+# 启动Streamlit Web界面
 streamlit run streamlit_app.py
 ```
 
-应用将在浏览器中自动打开：http://localhost:8501
+### 5. 日历订阅服务
+
+启动服务后，可以通过以下URL订阅日历：
+
+```
+负责人日历: http://localhost:8080/calendars/grace_irvine_coordinator.ics
+同工日历: http://localhost:8080/calendars/grace_irvine_workers.ics
+```
+
+## ☁️ Cloud Run部署
+
+### 一键部署
+
+```bash
+# 部署到Google Cloud Run
+python3 deploy_cloud_run_with_static.py
+```
+
+### 部署后的URL
+
+```
+主服务: https://grace-irvine-scheduler-HASH-uc.a.run.app
+负责人日历: https://grace-irvine-scheduler-HASH-uc.a.run.app/calendars/grace_irvine_coordinator.ics
+同工日历: https://grace-irvine-scheduler-HASH-uc.a.run.app/calendars/grace_irvine_workers.ics
+系统状态: https://grace-irvine-scheduler-HASH-uc.a.run.app/api/status
+```
+
+### 管理命令
+
+```bash
+# 查看服务状态
+gcloud run services describe grace-irvine-scheduler --region=us-central1
+
+# 查看日志
+gcloud run services logs read grace-irvine-scheduler --region=us-central1
+
+# 更新日历文件
+curl -X POST https://your-service-url.run.app/api/update-calendars
+```
 
 #### 命令行工具
 
