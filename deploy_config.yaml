@@ -1,0 +1,72 @@
+# Grace Irvine Ministry Scheduler 部署配置
+# Deployment Configuration
+
+project:
+  id: "ai-for-god"
+  region: "us-central1"
+  
+service:
+  name: "grace-irvine-scheduler"
+  image: "gcr.io/ai-for-god/grace-irvine-scheduler"
+  port: 8080
+  
+resources:
+  memory: "1Gi"
+  cpu: "1"
+  timeout: 3600
+  concurrency: 80
+  max_instances: 10
+  
+environment:
+  # Streamlit配置（如果需要）
+  STREAMLIT_SERVER_HEADLESS: "true"
+  STREAMLIT_SERVER_ENABLE_CORS: "false"
+  STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "false"
+  
+  # FastAPI配置
+  PYTHONPATH: "/app"
+  
+secrets:
+  # 从Secret Manager获取
+  - name: "GOOGLE_SPREADSHEET_ID"
+    secret: "grace-irvine-secrets"
+    key: "GOOGLE_SPREADSHEET_ID"
+  
+  - name: "GOOGLE_APPLICATION_CREDENTIALS"
+    value: "/app/configs/service_account.json"
+
+urls:
+  # 部署后的URL结构
+  main: "https://grace-irvine-scheduler-HASH-uc.a.run.app"
+  coordinator_calendar: "https://grace-irvine-scheduler-HASH-uc.a.run.app/calendars/grace_irvine_coordinator.ics"
+  workers_calendar: "https://grace-irvine-scheduler-HASH-uc.a.run.app/calendars/grace_irvine_workers.ics"
+  api_status: "https://grace-irvine-scheduler-HASH-uc.a.run.app/api/status"
+  health_check: "https://grace-irvine-scheduler-HASH-uc.a.run.app/health"
+  debug_info: "https://grace-irvine-scheduler-HASH-uc.a.run.app/debug"
+
+files:
+  # 必要的文件列表
+  required:
+    - "app_with_static_routes.py"  # 主应用文件
+    - "Dockerfile"                 # Docker配置
+    - "requirements.txt"           # Python依赖
+    - "generate_real_calendars.py" # 日历生成脚本
+    - "debug_calendar_files.py"    # 调试工具
+    
+  optional:
+    - "streamlit_app.py"           # Streamlit界面（可选）
+    - "test_complete_service.py"   # 测试脚本
+    
+  directories:
+    - "src/"                       # 源代码
+    - "templates/"                 # 模板文件
+    - "configs/"                   # 配置文件
+    - "calendars/"                 # 日历文件（运行时创建）
+
+features:
+  # 功能特性
+  static_file_service: true       # 静态文件服务
+  calendar_subscription: true     # 日历订阅
+  api_endpoints: true            # API端点
+  debug_tools: true              # 调试工具
+  auto_calendar_generation: true # 自动日历生成
