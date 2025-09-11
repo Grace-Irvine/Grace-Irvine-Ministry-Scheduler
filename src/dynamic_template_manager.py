@@ -31,36 +31,23 @@ class TemplateConfig:
 class DynamicTemplateManager:
     """动态模板管理器
     
-    支持:
-    1. 本地JSON文件存储
-    2. GCP Storage云端存储
-    3. 运行时模板编辑
-    4. 自动备份和版本控制
+    使用CloudStorageManager统一管理本地和云端存储
     """
     
-    def __init__(self, 
-                 local_template_file: str = "templates/dynamic_templates.json",
-                 gcp_bucket_name: str = None,
-                 gcp_template_path: str = "templates/dynamic_templates.json"):
+    def __init__(self, storage_manager=None):
         """初始化动态模板管理器
         
         Args:
-            local_template_file: 本地模板文件路径
-            gcp_bucket_name: GCP Storage bucket名称
-            gcp_template_path: GCP Storage中的模板文件路径
+            storage_manager: 存储管理器实例，如果为None则创建新实例
         """
-        self.local_template_file = Path(local_template_file)
-        self.gcp_bucket_name = gcp_bucket_name or os.getenv('GCP_TEMPLATE_BUCKET')
-        self.gcp_template_path = gcp_template_path
+        if storage_manager:
+            self.storage_manager = storage_manager
+        else:
+            from .cloud_storage_manager import get_storage_manager
+            self.storage_manager = get_storage_manager()
         
         # 模板数据
         self.templates_data = {}
-        self.is_cloud_mode = self._detect_cloud_environment()
-        
-        # GCP Storage客户端（如果在云端环境）
-        self.storage_client = None
-        if self.is_cloud_mode and self.gcp_bucket_name:
-            self._setup_gcp_storage()
         
         # 加载模板
         self.load_templates()
@@ -85,26 +72,27 @@ class DynamicTemplateManager:
     def load_templates(self) -> bool:
         """加载模板配置
         
-        优先级: GCP Storage > 本地文件 > 默认模板
+        使用存储管理器统一加载
         
         Returns:
             是否加载成功
         """
-        # 尝试从GCP Storage加载
-        if self.is_cloud_mode and self.storage_client:
-            if self._load_from_gcp():
-                logger.info("从GCP Storage加载模板成功")
+        try:
+            # 使用存储管理器读取模板配置
+            self.templates_data = self.storage_manager.read_template_config()
+            
+            if self.templates_data:
+                logger.info("模板配置加载成功")
                 return True
-        
-        # 尝试从本地文件加载
-        if self._load_from_local():
-            logger.info("从本地文件加载模板成功")
-            return True
-        
-        # 使用默认模板
-        logger.warning("使用默认模板配置")
-        self._create_default_templates()
-        return False
+            else:
+                logger.warning("模板配置加载失败，使用默认配置")
+                self._create_default_templates()
+                return False
+                
+        except Exception as e:
+            logger.error(f"加载模板配置失败: {e}")
+            self._create_default_templates()
+            return False
     
     def _load_from_gcp(self) -> bool:
         """从GCP Storage加载模板"""
@@ -160,33 +148,8 @@ class DynamicTemplateManager:
         
         self.templates_data['metadata']['last_updated'] = datetime.now().isoformat()
         
-        success = True
-        
-        # 保存到本地文件
-        try:
-            self.local_template_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.local_template_file, 'w', encoding='utf-8') as f:
-                json.dump(self.templates_data, f, ensure_ascii=False, indent=2)
-            logger.info(f"模板已保存到本地: {self.local_template_file}")
-        except Exception as e:
-            logger.error(f"保存到本地文件失败: {e}")
-            success = False
-        
-        # 保存到GCP Storage（如果启用）
-        if update_cloud and self.is_cloud_mode and self.storage_client:
-            try:
-                bucket = self.storage_client.bucket(self.gcp_bucket_name)
-                blob = bucket.blob(self.gcp_template_path)
-                
-                content = json.dumps(self.templates_data, ensure_ascii=False, indent=2)
-                blob.upload_from_string(content, content_type='application/json')
-                
-                logger.info(f"模板已保存到GCP Storage: gs://{self.gcp_bucket_name}/{self.gcp_template_path}")
-            except Exception as e:
-                logger.error(f"保存到GCP Storage失败: {e}")
-                success = False
-        
-        return success
+        # 使用存储管理器保存
+        return self.storage_manager.write_template_config(self.templates_data)
     
     def _create_default_templates(self):
         """创建默认模板配置"""
