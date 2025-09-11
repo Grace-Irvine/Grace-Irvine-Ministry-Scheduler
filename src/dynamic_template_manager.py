@@ -34,11 +34,12 @@ class DynamicTemplateManager:
     使用CloudStorageManager统一管理本地和云端存储
     """
     
-    def __init__(self, storage_manager=None):
+    def __init__(self, storage_manager=None, scripture_manager=None):
         """初始化动态模板管理器
         
         Args:
             storage_manager: 存储管理器实例，如果为None则创建新实例
+            scripture_manager: 经文管理器实例，如果为None则创建新实例
         """
         if storage_manager:
             self.storage_manager = storage_manager
@@ -46,28 +47,33 @@ class DynamicTemplateManager:
             from .cloud_storage_manager import get_storage_manager
             self.storage_manager = get_storage_manager()
         
+        if scripture_manager:
+            self.scripture_manager = scripture_manager
+        else:
+            from .scripture_manager import get_scripture_manager
+            self.scripture_manager = get_scripture_manager()
+        
         # 模板数据
         self.templates_data = {}
         
         # 加载模板
         self.load_templates()
     
-    def _detect_cloud_environment(self) -> bool:
-        """检测是否在云端环境"""
-        return 'K_SERVICE' in os.environ or bool(self.gcp_bucket_name)
+    @property
+    def is_cloud_mode(self) -> bool:
+        """检查是否处于云端模式"""
+        return self.storage_manager.is_cloud_mode
     
-    def _setup_gcp_storage(self):
-        """设置GCP Storage客户端"""
-        try:
-            from google.cloud import storage
-            self.storage_client = storage.Client()
-            logger.info(f"GCP Storage客户端初始化成功，bucket: {self.gcp_bucket_name}")
-        except ImportError:
-            logger.error("google-cloud-storage包未安装，无法使用GCP Storage")
-            self.storage_client = None
-        except Exception as e:
-            logger.error(f"GCP Storage初始化失败: {e}")
-            self.storage_client = None
+    @property
+    def gcp_bucket_name(self) -> Optional[str]:
+        """获取GCP bucket名称"""
+        return getattr(self.storage_manager, 'config', None) and self.storage_manager.config.bucket_name
+    
+    @property
+    def local_template_file(self) -> Path:
+        """获取本地模板文件路径"""
+        return getattr(self.storage_manager, 'local_template_file', Path('templates/dynamic_templates.json'))
+    
     
     def load_templates(self) -> bool:
         """加载模板配置
@@ -94,44 +100,6 @@ class DynamicTemplateManager:
             self._create_default_templates()
             return False
     
-    def _load_from_gcp(self) -> bool:
-        """从GCP Storage加载模板"""
-        try:
-            if not self.storage_client or not self.gcp_bucket_name:
-                return False
-            
-            bucket = self.storage_client.bucket(self.gcp_bucket_name)
-            blob = bucket.blob(self.gcp_template_path)
-            
-            if blob.exists():
-                content = blob.download_as_text(encoding='utf-8')
-                self.templates_data = json.loads(content)
-                logger.info(f"从GCP Storage加载模板: gs://{self.gcp_bucket_name}/{self.gcp_template_path}")
-                return True
-            else:
-                logger.warning(f"GCP Storage中模板文件不存在: {self.gcp_template_path}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"从GCP Storage加载模板失败: {e}")
-            return False
-    
-    def _load_from_local(self) -> bool:
-        """从本地文件加载模板"""
-        try:
-            if not self.local_template_file.exists():
-                logger.warning(f"本地模板文件不存在: {self.local_template_file}")
-                return False
-            
-            with open(self.local_template_file, 'r', encoding='utf-8') as f:
-                self.templates_data = json.load(f)
-            
-            logger.info(f"从本地文件加载模板: {self.local_template_file}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"从本地文件加载模板失败: {e}")
-            return False
     
     def save_templates(self, update_cloud: bool = True) -> bool:
         """保存模板配置
@@ -272,6 +240,18 @@ class DynamicTemplateManager:
             if schedule.video_editor:
                 template_vars['video_editor'] = schedule.video_editor
         
+        # 获取经文分享
+        scripture_text = ""
+        try:
+            current_scripture = self.scripture_manager.get_next_scripture()
+            if current_scripture:
+                scripture_text = self.scripture_manager.format_scripture_for_template(current_scripture)
+        except Exception as e:
+            logger.warning(f"获取经文分享失败: {e}")
+            scripture_text = ""
+        
+        template_vars['scripture_sharing'] = scripture_text
+        
         # 渲染主模板
         template = template_config.get('template', '')
         if not schedule or not schedule.has_assignments():
@@ -404,13 +384,17 @@ class DynamicTemplateManager:
         """备份当前模板配置"""
         try:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_file = self.local_template_file.parent / f"templates_backup_{timestamp}.json"
+            backup_path = f"templates/templates_backup_{timestamp}.json"
             
-            with open(backup_file, 'w', encoding='utf-8') as f:
-                json.dump(self.templates_data, f, ensure_ascii=False, indent=2)
+            # 使用存储管理器保存备份
+            success = self.storage_manager.write_file(backup_path, self.templates_data, sync_to_cloud=False)
             
-            logger.info(f"模板已备份到: {backup_file}")
-            return True
+            if success:
+                logger.info(f"模板已备份到: {backup_path}")
+                return True
+            else:
+                logger.error("模板备份失败")
+                return False
             
         except Exception as e:
             logger.error(f"备份模板失败: {e}")
