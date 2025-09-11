@@ -77,7 +77,7 @@ python start.py --port 8080
 
 生成的日历文件：
 - `grace_irvine_coordinator.ics` - 负责人日历（包含通知提醒）
-- `grace_irvine_workers.ics` - 同工日历（包含服事安排）
+- ~~`grace_irvine_workers.ics`~~ - 同工日历（留到下阶段开发）
 
 ### 订阅方法：
 1. **Google Calendar**: 左侧"+" → "从URL添加" → 粘贴链接
@@ -89,10 +89,13 @@ python start.py --port 8080
 ### 本地开发
 ```bash
 # 启动开发环境
-python start.py
+python3 start.py
 
 # 启动时跳过环境检查
-python start.py --skip-checks
+python3 start.py --skip-checks
+
+# 手动生成ICS日历文件
+python3 generate_calendars.py
 ```
 
 ### Docker部署
@@ -116,11 +119,13 @@ python deploy_cloud_run_with_static.py
 Grace-Irvine-Ministry-Scheduler/
 ├── start.py                    # 🚀 统一启动入口
 ├── app_unified.py             # 📱 统一Web应用
+├── generate_calendars.py      # 📅 日历生成启动器
 ├── src/                       # 📦 核心模块
 │   ├── data_cleaner.py       # 🧹 数据清洗
 │   ├── scheduler.py          # 📅 排程处理
 │   ├── template_manager.py   # 📝 模板管理
-│   └── email_sender.py       # 📧 邮件发送
+│   ├── email_sender.py       # 📧 邮件发送
+│   └── calendar_generator.py # 🗓️ ICS日历生成器
 ├── configs/                   # ⚙️ 配置文件
 ├── templates/                 # 📄 模板文件
 ├── calendars/                 # 📅 ICS文件

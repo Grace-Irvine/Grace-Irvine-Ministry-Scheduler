@@ -12,15 +12,16 @@ from datetime import date, timedelta
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data_cleaner import FocusedDataCleaner, MinistrySchedule
+from src.data_cleaner import FocusedDataCleaner
+from src.models import MinistryAssignment
 from app_unified import generate_wednesday_template, generate_saturday_template
-from generate_real_calendars import generate_unified_wednesday_template, generate_unified_saturday_template
+from src.calendar_generator import generate_unified_wednesday_template, generate_unified_saturday_template
 
 def create_test_schedule():
     """创建测试用的排程数据"""
     test_date = date.today() + timedelta(days=7)  # 下周日
     
-    schedule = MinistrySchedule(
+    schedule = MinistryAssignment(
         date=test_date,
         audio_tech="Jimmy",
         video_director="靖铮", 

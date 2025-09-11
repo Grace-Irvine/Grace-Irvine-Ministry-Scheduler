@@ -20,43 +20,14 @@ import yaml
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List
 from pathlib import Path
-from dataclasses import dataclass
+# 导入统一数据模型
+from .models import MinistryAssignment, ServiceRole
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent
 
-
-@dataclass
-class MinistrySchedule:
-    """事工排程数据结构"""
-    date: date
-    audio_tech: Optional[str] = None          # 音控 (Q列)
-    video_director: Optional[str] = None      # 导播/摄影 (S列)
-    propresenter_play: Optional[str] = None   # ProPresenter播放 (T列)
-    propresenter_update: Optional[str] = None # ProPresenter更新 (U列)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式"""
-        return {
-            'date': self.date.strftime('%Y-%m-%d'),
-            'audio_tech': self.audio_tech,
-            'video_director': self.video_director,
-            'propresenter_play': self.propresenter_play,
-            'propresenter_update': self.propresenter_update
-        }
-    
-    def get_all_assignments(self) -> Dict[str, str]:
-        """获取所有非空的事工安排"""
-        assignments = {}
-        if self.audio_tech:
-            assignments['音控'] = self.audio_tech
-        if self.video_director:
-            assignments['导播/摄影'] = self.video_director
-        if self.propresenter_play:
-            assignments['ProPresenter播放'] = self.propresenter_play
-        if self.propresenter_update:
-            assignments['ProPresenter更新'] = self.propresenter_update
-        return assignments
+# 向后兼容别名
+MinistrySchedule = MinistryAssignment
 
 
 class FocusedDataCleaner:
@@ -257,7 +228,7 @@ class FocusedDataCleaner:
             self.stats['invalid_dates'] += 1
             return None
     
-    def clean_focused_data(self, df: pd.DataFrame) -> List[MinistrySchedule]:
+    def clean_focused_data(self, df: pd.DataFrame) -> List[MinistryAssignment]:
         """清洗专注的数据并转换为 MinistrySchedule 对象"""
         print("🧹 开始清洗数据...")
         
@@ -277,7 +248,7 @@ class FocusedDataCleaner:
             
             # 只有当至少有一个角色有人时才创建记录
             if any([audio_tech, video_director, propresenter_play, propresenter_update]):
-                schedule = MinistrySchedule(
+                schedule = MinistryAssignment(
                     date=parsed_date,
                     audio_tech=audio_tech,
                     video_director=video_director,
@@ -291,7 +262,7 @@ class FocusedDataCleaner:
         
         return schedules
     
-    def generate_summary_report(self, schedules: List[MinistrySchedule]) -> Dict[str, Any]:
+    def generate_summary_report(self, schedules: List[MinistryAssignment]) -> Dict[str, Any]:
         """生成汇总报告"""
         if not schedules:
             return {
@@ -335,7 +306,7 @@ class FocusedDataCleaner:
             }
         }
     
-    def export_to_excel(self, schedules: List[MinistrySchedule], output_path: str):
+    def export_to_excel(self, schedules: List[MinistryAssignment], output_path: str):
         """导出到 Excel 文件"""
         try:
             # 转换为 DataFrame
@@ -358,7 +329,7 @@ class FocusedDataCleaner:
             print(f"❌ 导出失败: {e}")
             raise
     
-    def find_next_sunday_schedule(self, schedules: List[MinistrySchedule]) -> Optional[MinistrySchedule]:
+    def find_next_sunday_schedule(self, schedules: List[MinistryAssignment]) -> Optional[MinistryAssignment]:
         """查找下周主日的排程"""
         today = date.today()
         days_until_sunday = (6 - today.weekday()) % 7
