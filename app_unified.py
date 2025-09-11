@@ -665,6 +665,7 @@ def main():
             "📊 数据概览", 
             "📝 模板生成器",
             "🛠️ 模板编辑器", 
+            "📖 经文管理",
             "📅 日历管理",
             "⚙️ 系统设置"
         ]
@@ -696,6 +697,9 @@ def main():
     
     elif page == "🛠️ 模板编辑器":
         show_dynamic_template_editor()
+    
+    elif page == "📖 经文管理":
+        show_scripture_management()
     
     elif page == "📅 日历管理":
         show_calendar_management()
@@ -927,6 +931,260 @@ def show_dynamic_template_editor():
         # 显示当前配置
         with st.expander("🔧 查看完整配置"):
             st.json(template_manager.templates_data)
+
+def show_scripture_management():
+    """显示经文管理页面"""
+    st.markdown('<div class="section-header">📖 经文分享管理</div>', unsafe_allow_html=True)
+    st.markdown("管理周三通知中的经文分享内容，支持添加、编辑、删除和排序")
+    
+    # 获取经文管理器
+    from src.scripture_manager import get_scripture_manager
+    scripture_manager = get_scripture_manager()
+    
+    # 显示当前经文统计
+    stats = scripture_manager.get_scripture_stats()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("📚 经文总数", stats.get('total_count', 0))
+    with col2:
+        st.metric("📍 当前位置", stats.get('current_index', 0) + 1)
+    with col3:
+        next_index = (stats.get('current_index', 0) + 1) % max(stats.get('total_count', 1), 1)
+        st.metric("⏭️ 下一位置", next_index + 1)
+    with col4:
+        if stats.get('last_updated'):
+            last_updated = stats['last_updated'][:10] if stats['last_updated'] != 'Unknown' else '未知'
+            st.metric("📅 更新日期", last_updated)
+        else:
+            st.metric("📅 更新日期", "未知")
+    
+    # 创建标签页
+    tab1, tab2, tab3, tab4 = st.tabs(["📝 经文列表", "➕ 添加经文", "🔧 编辑经文", "📊 使用预览"])
+    
+    with tab1:
+        st.markdown("### 📚 当前经文列表")
+        
+        scriptures = scripture_manager.get_all_scriptures()
+        current_index = stats.get('current_index', 0)
+        
+        if scriptures:
+            for i, scripture in enumerate(scriptures):
+                # 标记当前经文
+                is_current = (i == current_index)
+                icon = "👉" if is_current else "📖"
+                status = " **(下一个使用)** " if is_current else ""
+                
+                # 获取经文的第一行作为标题
+                content = scripture.get('content', '')
+                first_line = content.split('\n')[0] if content else '未知经文'
+                if len(first_line) > 20:
+                    first_line = first_line[:20] + "..."
+                
+                with st.expander(f"{icon} {first_line}{status}"):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.markdown("**经文内容：**")
+                        # 显示完整经文内容，保持换行格式
+                        content_lines = scripture.get('content', '').split('\n')
+                        for line in content_lines:
+                            if line.strip():
+                                st.markdown(f"> {line}")
+                    
+                    with col2:
+                        st.markdown("**操作**")
+                        if st.button("🗑️ 删除", key=f"delete_{scripture.get('id')}", use_container_width=True):
+                            if scripture_manager.delete_scripture(scripture.get('id')):
+                                st.success("✅ 删除成功！")
+                                st.rerun()
+                            else:
+                                st.error("❌ 删除失败")
+        else:
+            st.info("📄 暂无经文内容，请添加新经文")
+        
+        # 管理操作
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("🔄 重置索引", use_container_width=True):
+                if scripture_manager.reset_index():
+                    st.success("✅ 索引已重置到开头")
+                    st.rerun()
+                else:
+                    st.error("❌ 重置失败")
+        
+        with col2:
+            if st.button("⏭️ 跳过当前", use_container_width=True):
+                next_scripture = scripture_manager.get_next_scripture()
+                if next_scripture:
+                    st.success(f"✅ 已跳到: {next_scripture.get('verse', 'Unknown')}")
+                    st.rerun()
+                else:
+                    st.error("❌ 跳过失败")
+        
+        with col3:
+            if st.button("💾 保存配置", use_container_width=True):
+                if scripture_manager.save_scriptures():
+                    st.success("✅ 配置已保存")
+                else:
+                    st.error("❌ 保存失败")
+    
+    with tab2:
+        st.markdown("### ➕ 添加新经文")
+        
+        st.markdown("**格式说明：** 请按以下格式粘贴经文内容：")
+        st.code("""看哪，弟兄和睦同居
+是何等地善，何等地美！
+(诗篇 133:1 和合本)""")
+        
+        with st.form("add_scripture_form"):
+            content = st.text_area(
+                "经文内容", 
+                placeholder="看哪，弟兄和睦同居\n是何等地善，何等地美！\n(诗篇 133:1 和合本)", 
+                height=150,
+                help="请粘贴完整的经文内容，包括经文和出处"
+            )
+            
+            submitted = st.form_submit_button("📝 添加经文", type="primary")
+            
+            if submitted:
+                if content.strip():
+                    if scripture_manager.add_scripture(content.strip()):
+                        st.success("✅ 经文添加成功！")
+                        st.rerun()
+                    else:
+                        st.error("❌ 添加失败，请检查输入")
+                else:
+                    st.error("❌ 请填写经文内容")
+    
+    with tab3:
+        st.markdown("### 🔧 编辑现有经文")
+        
+        scriptures = scripture_manager.get_all_scriptures()
+        if scriptures:
+            # 选择要编辑的经文
+            scripture_options = {}
+            for s in scriptures:
+                content = s.get('content', '')
+                first_line = content.split('\n')[0] if content else 'Unknown'
+                if len(first_line) > 30:
+                    first_line = first_line[:30] + "..."
+                scripture_options[f"{s.get('id')}: {first_line}"] = s
+            
+            selected_key = st.selectbox("选择要编辑的经文", options=list(scripture_options.keys()))
+            
+            if selected_key:
+                selected_scripture = scripture_options[selected_key]
+                
+                st.markdown("**格式说明：** 请按以下格式编辑经文内容：")
+                st.code("""看哪，弟兄和睦同居
+是何等地善，何等地美！
+(诗篇 133:1 和合本)""")
+                
+                with st.form("edit_scripture_form"):
+                    edit_content = st.text_area(
+                        "经文内容", 
+                        value=selected_scripture.get('content', ''), 
+                        height=150,
+                        help="请编辑完整的经文内容，包括经文和出处"
+                    )
+                    
+                    edit_submitted = st.form_submit_button("💾 保存修改", type="primary")
+                    
+                    if edit_submitted:
+                        if edit_content.strip():
+                            if scripture_manager.update_scripture(
+                                selected_scripture.get('id'), 
+                                edit_content.strip()
+                            ):
+                                st.success("✅ 经文更新成功！")
+                                st.rerun()
+                            else:
+                                st.error("❌ 更新失败")
+                        else:
+                            st.error("❌ 请填写经文内容")
+        else:
+            st.info("📄 暂无经文可编辑，请先添加经文")
+    
+    with tab4:
+        st.markdown("### 📊 使用预览")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 📖 当前经文预览")
+            current_scripture = scripture_manager.get_current_scripture()
+            if current_scripture:
+                formatted = scripture_manager.format_scripture_for_template(current_scripture)
+                st.code(formatted, language=None)
+                
+                st.markdown("**详细信息：**")
+                st.json(current_scripture)
+            else:
+                st.info("暂无当前经文")
+        
+        with col2:
+            st.markdown("#### 🔮 下一经文预览")
+            # 临时获取下一个经文（不更新索引）
+            next_index = (stats.get('current_index', 0) + 1) % max(stats.get('total_count', 1), 1)
+            scriptures = scripture_manager.get_all_scriptures()
+            
+            if scriptures and next_index < len(scriptures):
+                next_scripture = scriptures[next_index]
+                next_formatted = scripture_manager.format_scripture_for_template(next_scripture)
+                st.code(next_formatted, language=None)
+                
+                st.markdown("**详细信息：**")
+                st.json(next_scripture)
+            else:
+                st.info("暂无下一经文")
+        
+        # 模板集成预览
+        st.markdown("---")
+        st.markdown("#### 🔧 模板集成预览")
+        
+        if st.button("🧪 测试周三通知模板", use_container_width=True):
+            try:
+                # 获取模板管理器
+                template_manager = get_template_manager()
+                
+                # 创建测试数据
+                from datetime import date, timedelta
+                test_date = date.today() + timedelta(days=7)
+                
+                from src.models import MinistryAssignment
+                test_schedule = MinistryAssignment(
+                    date=test_date,
+                    audio_tech="Jimmy",
+                    video_director="靖铮",
+                    propresenter_play="张宇",
+                    propresenter_update="Daniel"
+                )
+                
+                # 生成包含经文的通知
+                notification = template_manager.render_weekly_confirmation(test_date, test_schedule)
+                
+                st.markdown("**生成的通知内容：**")
+                st.code(notification, language=None)
+                
+            except Exception as e:
+                st.error(f"❌ 测试失败: {e}")
+        
+        # 显示使用统计
+        if stats:
+            st.markdown("---")
+            st.markdown("#### 📈 使用统计")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric("下次使用", f"第 {stats.get('current_index', 0) + 1} 段")
+            
+            with col2:
+                if stats.get('last_updated'):
+                    last_updated = stats['last_updated'][:16] if stats['last_updated'] != 'Unknown' else '未知'
+                    st.metric("最后更新", last_updated)
 
 # ==================== 应用启动 ====================
 

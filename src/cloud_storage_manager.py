@@ -433,6 +433,14 @@ class CloudStorageManager:
         """写入模板配置"""
         return self.write_file("templates/dynamic_templates.json", config)
     
+    def read_scripture_config(self) -> Optional[Dict]:
+        """读取经文配置"""
+        return self.read_file("templates/scripture_sharing.json", "json")
+    
+    def write_scripture_config(self, config: Dict) -> bool:
+        """写入经文配置"""
+        return self.write_file("templates/scripture_sharing.json", config)
+    
     def read_ics_calendar(self, calendar_name: str = "grace_irvine_coordinator.ics") -> Optional[str]:
         """读取ICS日历文件"""
         return self.read_file(f"calendars/{calendar_name}", "text")

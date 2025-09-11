@@ -9,7 +9,7 @@
     "weekly_confirmation": {
       "name": "周三确认通知",
       "description": "周三晚上发送的事工安排确认通知",
-      "template": "【本周{month}月{day}日主日事工安排提醒】🕊️\n\n• 音控：{audio_tech}\n• 导播/摄影：{video_director}\n• ProPresenter播放：{propresenter_play}\n• ProPresenter更新：{propresenter_update}\n• 视频剪辑：{video_editor}\n\n请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏",
+      "template": "【本周{month}月{day}日主日事工安排提醒】🕊️\n\n• 音控：{audio_tech}\n• 导播/摄影：{video_director}\n• ProPresenter播放：{propresenter_play}\n• ProPresenter更新：{propresenter_update}\n• 视频剪辑：{video_editor}\n\n{scripture_sharing}\n\n请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏",
       "no_assignment_template": "【本周主日事工安排提醒】🕊️\n\n暂无本周事工安排，请联系协调员确认。",
       "variables": {
         "month": "月份",
@@ -18,7 +18,8 @@
         "video_director": "导播/摄影人员",
         "propresenter_play": "ProPresenter播放人员",
         "propresenter_update": "ProPresenter更新人员",
-        "video_editor": "视频剪辑人员"
+        "video_editor": "视频剪辑人员",
+        "scripture_sharing": "经文分享内容（自动生成）"
       },
       "default_assignments": {
         "audio_tech": "待安排",
