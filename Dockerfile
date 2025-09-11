@@ -22,8 +22,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # 创建必要的目录和权限
-RUN mkdir -p /app/calendars /app/logs /app/data && \
+RUN mkdir -p /app/calendars /app/logs /app/data /app/templates && \
     chmod +x /app/start.py
+
+# 确保经文分享配置文件存在
+RUN if [ ! -f /app/templates/scripture_sharing.json ]; then \
+        echo '{"metadata":{"version":"1.0","current_index":0,"total_count":0},"scriptures":[]}' > /app/templates/scripture_sharing.json; \
+    fi
 
 # 设置环境变量
 ENV PYTHONPATH=/app

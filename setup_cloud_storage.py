@@ -38,22 +38,26 @@ def create_bucket_structure():
         f"gsutil iam ch serviceAccount:{project_id}@appspot.gserviceaccount.com:objectAdmin gs://{bucket_name}",
         
         # 4. 创建目录结构（上传占位文件）
-        "echo '# Templates directory' > .temp_templates_readme",
+        "echo '# Templates directory - stores dynamic templates and scripture sharing configs' > .temp_templates_readme",
         f"gsutil cp .temp_templates_readme gs://{bucket_name}/templates/README.txt",
         
-        "echo '# Calendars directory' > .temp_calendars_readme", 
+        "echo '# Calendars directory - stores ICS calendar files' > .temp_calendars_readme", 
         f"gsutil cp .temp_calendars_readme gs://{bucket_name}/calendars/README.txt",
         
-        "echo '# Data cache directory' > .temp_data_readme",
+        "echo '# Data cache directory - stores processed data cache' > .temp_data_readme",
         f"gsutil cp .temp_data_readme gs://{bucket_name}/data/cache/README.txt",
         
-        "echo '# Backups directory' > .temp_backups_readme",
+        "echo '# Backups directory - stores configuration backups' > .temp_backups_readme",
         f"gsutil cp .temp_backups_readme gs://{bucket_name}/backups/README.txt",
         
-        # 5. 清理临时文件
+        # 5. 上传初始配置文件
+        f"gsutil cp templates/dynamic_templates.json gs://{bucket_name}/templates/dynamic_templates.json",
+        f"gsutil cp templates/scripture_sharing.json gs://{bucket_name}/templates/scripture_sharing.json",
+        
+        # 6. 清理临时文件
         "rm .temp_*_readme",
         
-        # 6. 验证结构
+        # 7. 验证结构
         f"gsutil ls -r gs://{bucket_name}/"
     ]
     
@@ -94,6 +98,11 @@ def upload_initial_files():
             'local': 'templates/dynamic_templates.json',
             'remote': 'templates/dynamic_templates.json',
             'description': '动态模板配置'
+        },
+        {
+            'local': 'templates/scripture_sharing.json',
+            'remote': 'templates/scripture_sharing.json',
+            'description': '经文分享配置'
         },
         {
             'local': 'calendars/grace_irvine_coordinator.ics',
@@ -177,7 +186,8 @@ gcloud run deploy grace-irvine-scheduler \\
     # 显示关键信息
     print(f"\n📋 关键配置信息:")
     print(f"  存储桶: gs://{bucket_name}")
-    print(f"  模板文件: gs://{bucket_name}/templates/dynamic_templates.json")
+    print(f"  动态模板: gs://{bucket_name}/templates/dynamic_templates.json")
+    print(f"  经文配置: gs://{bucket_name}/templates/scripture_sharing.json")
     print(f"  日历文件: gs://{bucket_name}/calendars/grace_irvine_coordinator.ics")
     print(f"  公开访问: https://storage.googleapis.com/{bucket_name}/calendars/grace_irvine_coordinator.ics")
     
@@ -203,9 +213,18 @@ def test_storage_access():
         # 测试模板读取
         template_config = manager.read_template_config()
         if template_config:
-            print("✅ 模板配置读取成功")
+            print("✅ 动态模板配置读取成功")
         else:
-            print("⚠️ 模板配置读取失败（可能是首次运行）")
+            print("⚠️ 动态模板配置读取失败（可能是首次运行）")
+        
+        # 测试经文配置读取
+        scripture_config = manager.read_scripture_config()
+        if scripture_config:
+            print("✅ 经文分享配置读取成功")
+            scriptures_count = len(scripture_config.get('scriptures', []))
+            print(f"   包含 {scriptures_count} 段经文")
+        else:
+            print("⚠️ 经文分享配置读取失败（可能是首次运行）")
         
         # 测试状态检查
         status = manager.get_storage_status()
@@ -255,7 +274,9 @@ def main():
         print("\n✅ 设置完成的功能:")
         print("  • Bucket创建和权限配置")
         print("  • 目录结构初始化")
-        print("  • 初始文件上传")
+        print("  • 动态模板配置上传")
+        print("  • 经文分享配置上传")
+        print("  • 日历文件存储路径")
         print("  • 部署配置生成")
         print("  • 存储访问测试")
         
@@ -267,7 +288,8 @@ def main():
         
         print("\n🔗 重要URL:")
         bucket_name = os.getenv('GCP_STORAGE_BUCKET', 'grace-irvine-ministry-scheduler')
-        print(f"  模板配置: gs://{bucket_name}/templates/dynamic_templates.json")
+        print(f"  动态模板: gs://{bucket_name}/templates/dynamic_templates.json")
+        print(f"  经文配置: gs://{bucket_name}/templates/scripture_sharing.json")
         print(f"  日历文件: gs://{bucket_name}/calendars/grace_irvine_coordinator.ics")
         print(f"  公开订阅: https://storage.googleapis.com/{bucket_name}/calendars/grace_irvine_coordinator.ics")
         
