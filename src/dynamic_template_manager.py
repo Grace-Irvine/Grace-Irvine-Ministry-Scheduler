@@ -282,29 +282,40 @@ class DynamicTemplateManager:
         if not template_config:
             return "模板配置不存在"
         
-        # 获取事工安排
-        assignments = schedule.get_all_assignments() if schedule else {}
-        
-        # 生成事工安排文本
-        assignment_format = template_config.get('assignment_format', '• {role}：{person}')
+        # 获取默认值配置
         default_assignments = template_config.get('default_assignments', {})
         
-        assignments_text = ""
-        for role in ['音控', '导播/摄影', 'ProPresenter播放', 'ProPresenter更新']:
-            person = assignments.get(role) or default_assignments.get(role, '待安排')
-            assignments_text += assignment_format.format(role=role, person=person) + "\n"
+        # 准备细化的模板变量
+        template_vars = {
+            'month': sunday_date.month,
+            'day': sunday_date.day,
+            'audio_tech': default_assignments.get('audio_tech', '待安排'),
+            'video_director': default_assignments.get('video_director', '待安排'),
+            'propresenter_play': default_assignments.get('propresenter_play', '待安排'),
+            'propresenter_update': default_assignments.get('propresenter_update', '待安排'),
+            'video_editor': default_assignments.get('video_editor', '靖铮')
+        }
+        
+        # 如果有实际安排，使用实际人员
+        if schedule:
+            if schedule.audio_tech:
+                template_vars['audio_tech'] = schedule.audio_tech
+            if schedule.video_director:
+                template_vars['video_director'] = schedule.video_director
+            if schedule.propresenter_play:
+                template_vars['propresenter_play'] = schedule.propresenter_play
+            if schedule.propresenter_update:
+                template_vars['propresenter_update'] = schedule.propresenter_update
+            if schedule.video_editor:
+                template_vars['video_editor'] = schedule.video_editor
         
         # 渲染主模板
         template = template_config.get('template', '')
-        if not assignments:
+        if not schedule or not schedule.has_assignments():
             template = template_config.get('no_assignment_template', template)
         
         try:
-            return template.format(
-                month=sunday_date.month,
-                day=sunday_date.day,
-                assignments_text=assignments_text.strip()
-            )
+            return template.format(**template_vars)
         except Exception as e:
             logger.error(f"渲染周三确认通知失败: {e}")
             return template_config.get('no_assignment_template', '模板渲染失败')
@@ -323,39 +334,44 @@ class DynamicTemplateManager:
         if not template_config:
             return "模板配置不存在"
         
-        # 获取事工安排
-        assignments = schedule.get_all_assignments() if schedule else {}
-        
-        # 生成服事详情文本
-        service_format = template_config.get('service_format', '- {role}：{person} {time}到，{instruction}')
+        # 获取配置
+        detail_format = template_config.get('detail_format', '{person} {time}到，{instruction}')
+        default_detail = template_config.get('default_detail', '待确认 {time}到，{instruction}')
         service_instructions = template_config.get('service_instructions', {})
         service_times = template_config.get('service_times', {})
         
-        service_details = ""
-        for role in ['音控', '导播/摄影', 'ProPresenter播放']:
-            person = assignments.get(role)
+        # 生成各角色的详细信息
+        roles = {
+            'audio_tech': '音控',
+            'video_director': '导播/摄影',
+            'propresenter_play': 'ProPresenter播放',
+            'propresenter_update': 'ProPresenter更新'
+        }
+        
+        template_vars = {}
+        
+        for var_name, role_name in roles.items():
+            person = None
+            if schedule:
+                person = getattr(schedule, var_name, None)
+            
+            time = service_times.get(role_name, '9:00')
+            instruction = service_instructions.get(role_name, '请提前到场')
+            
             if person:
-                time = service_times.get(role, '9:00')
-                instruction = service_instructions.get(role, '请提前到场')
-                service_details += service_format.format(
-                    role=role, person=person, time=time, instruction=instruction
-                ) + "\n"
+                detail = detail_format.format(person=person, time=time, instruction=instruction)
             else:
-                time = service_times.get(role, '9:00')
-                instruction = service_instructions.get(role, '请提前到场')
-                service_details += service_format.format(
-                    role=role, person='待确认', time=time, instruction=instruction
-                ) + "\n"
+                detail = default_detail.format(time=time, instruction=instruction)
+            
+            template_vars[f'{var_name}_detail'] = detail
         
         # 渲染主模板
         template = template_config.get('template', '')
-        if not assignments:
+        if not schedule or not schedule.has_assignments():
             template = template_config.get('no_assignment_template', template)
         
         try:
-            return template.format(
-                service_details=service_details.strip()
-            )
+            return template.format(**template_vars)
         except Exception as e:
             logger.error(f"渲染周六提醒通知失败: {e}")
             return template_config.get('no_assignment_template', '模板渲染失败')
@@ -454,16 +470,25 @@ class DynamicTemplateManager:
             
             # 根据模板类型验证特定格式
             if template_type == 'weekly_confirmation':
-                required_vars = ['{month}', '{day}', '{assignments_text}']
+                required_vars = ['{month}', '{day}']
+                recommended_vars = ['{audio_tech}', '{video_director}', '{propresenter_play}', '{video_editor}']
+                
                 for var in required_vars:
                     if var not in template_content:
                         return False, f"缺少必需变量: {var}"
+                
+                # 检查是否至少包含一个事工角色变量
+                has_role_var = any(var in template_content for var in recommended_vars)
+                if not has_role_var:
+                    return False, f"建议至少包含一个事工角色变量: {', '.join(recommended_vars)}"
             
             elif template_type == 'saturday_reminder':
-                required_vars = ['{service_details}']
-                for var in required_vars:
-                    if var not in template_content:
-                        return False, f"缺少必需变量: {var}"
+                recommended_vars = ['{audio_tech_detail}', '{video_director_detail}', '{propresenter_play_detail}']
+                
+                # 检查是否至少包含一个服事详情变量
+                has_detail_var = any(var in template_content for var in recommended_vars)
+                if not has_detail_var:
+                    return False, f"建议至少包含一个服事详情变量: {', '.join(recommended_vars)}"
             
             elif template_type == 'monthly_overview':
                 required_vars = ['{year}', '{month}', '{schedule_list}']
