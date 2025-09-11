@@ -28,9 +28,11 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # 导入项目模块
+from src.models import MinistryAssignment, ServiceRole  # 统一数据模型
 from src.data_cleaner import FocusedDataCleaner
 from src.template_manager import NotificationTemplateManager
-from src.scheduler import GoogleSheetsExtractor, NotificationGenerator, MinistryAssignment
+from src.dynamic_template_manager import DynamicTemplateManager
+from src.scheduler import GoogleSheetsExtractor, NotificationGenerator
 from src.email_sender import EmailSender, EmailRecipient
 from dotenv import load_dotenv
 
@@ -205,7 +207,7 @@ def generate_calendar_files():
     try:
         # 运行日历生成脚本
         result = subprocess.run([
-            sys.executable, 'generate_real_calendars.py'
+            sys.executable, '-m', 'src.calendar_generator'
         ], capture_output=True, text=True, timeout=60, cwd=PROJECT_ROOT)
         
         if result.returncode == 0:
@@ -401,10 +403,9 @@ def show_subscription_info():
         base_url = os.getenv('CLOUD_RUN_URL', 'https://your-service-url.run.app')
     
     coordinator_url = f"{base_url}/calendars/grace_irvine_coordinator.ics"
-    workers_url = f"{base_url}/calendars/grace_irvine_workers.ics"
     
     st.code(f"负责人日历: {coordinator_url}")
-    st.code(f"同工日历: {workers_url}")
+    st.info("📝 同工日历功能留到下阶段开发")
     
     st.markdown("""
     **📱 订阅方法:**
@@ -559,57 +560,24 @@ def format_ics_datetime(dt_str: str) -> str:
 
 # ==================== 模板生成函数 ====================
 
+# 初始化动态模板管理器
+@st.cache_resource
+def get_template_manager():
+    """获取动态模板管理器实例（缓存）"""
+    return DynamicTemplateManager()
+
 def generate_wednesday_template(sunday_date, schedule):
-    """生成周三确认通知模板"""
-    template = f"""【本周{sunday_date.month}月{sunday_date.day}日主日事工安排提醒】🕊️
-
-"""
-    
-    assignments = schedule.get_all_assignments() if schedule else {}
-    
-    if assignments:
-        for role, person in assignments.items():
-            template += f"• {role}：{person}\n"
-    else:
-        template += "• 音控：待安排\n• 导播/摄影：待安排\n• ProPresenter播放：待安排\n• ProPresenter更新：待安排\n"
-    
-    template += """• 视频剪辑：靖铮
-
-请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏"""
-    
-    return template
+    """生成周三确认通知模板（使用动态模板）"""
+    template_manager = get_template_manager()
+    return template_manager.render_weekly_confirmation(sunday_date, schedule)
 
 def generate_saturday_template(sunday_date, schedule):
-    """生成周六提醒通知模板"""
-    template = f"""【主日服事提醒】✨
-明天 8:30布置/ 9:00彩排 / 10:00 正式敬拜  
-请各位同工提前到场：  
-
-"""
-    
-    assignments = schedule.get_all_assignments() if schedule else {}
-    
-    if assignments.get('音控'):
-        template += f"- 音控：{assignments['音控']} 9:00到，随敬拜团排练\n"
-    else:
-        template += "- 音控：待确认 9:00到，随敬拜团排练\n"
-    
-    if assignments.get('导播/摄影'):
-        template += f"- 导播/摄影: {assignments['导播/摄影']} 9:30到，检查预设机位\n"
-    else:
-        template += "- 导播/摄影: 待确认 9:30到，检查预设机位\n"
-    
-    if assignments.get('ProPresenter播放'):
-        template += f"- ProPresenter播放：{assignments['ProPresenter播放']} 9:00到，随敬拜团排练\n"
-    else:
-        template += "- ProPresenter播放：待确认 9:00到，随敬拜团排练\n"
-    
-    template += "\n愿主同在，出入平安。若临时不适请第一时间私信我。🙌"
-    
-    return template
+    """生成周六提醒通知模板（使用动态模板）"""
+    template_manager = get_template_manager()
+    return template_manager.render_saturday_reminder(sunday_date, schedule)
 
 def generate_monthly_template(schedules):
-    """生成月度总览通知模板"""
+    """生成月度总览通知模板（使用动态模板）"""
     today = date.today()
     if today.month == 12:
         next_month = today.replace(year=today.year + 1, month=1, day=1)
@@ -621,39 +589,17 @@ def generate_monthly_template(schedules):
         if s.date.year == next_month.year and s.date.month == next_month.month
     ]
     
-    template = f"""【{next_month.year}年{next_month.month:02d}月事工排班一览】📅
-请各位同工先行预留时间，如有冲突尽快与我沟通：
-
-当月安排预览：
-"""
+    # 获取Google Sheets链接
+    spreadsheet_id = os.getenv('GOOGLE_SPREADSHEET_ID', '1wescUQe9rIVLNcKdqmSLpzlAw9BGXMZmkFvjEF296nM')
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
     
-    if next_month_schedules:
-        for schedule in next_month_schedules:
-            date_str = schedule.date.strftime('%m/%d')
-            template += f"• {date_str}: "
-            
-            assignments = schedule.get_all_assignments()
-            assignment_list = []
-            
-            if assignments.get('音控'):
-                assignment_list.append(f"音控:{assignments['音控']}")
-            if assignments.get('导播/摄影'):
-                assignment_list.append(f"导播:{assignments['导播/摄影']}")
-            if assignments.get('ProPresenter播放'):
-                assignment_list.append(f"PPT播放:{assignments['ProPresenter播放']}")
-            
-            template += ", ".join(assignment_list) if assignment_list else "待安排"
-            template += "\n"
-    else:
-        template += "• 暂无排班数据\n"
-    
-    template += """
-温馨提示：
-- 周三晚发布当周安排（确认/调换）
-- 周六晚发布主日提醒（到场时间）
-感谢大家同心配搭！🙏"""
-    
-    return template
+    template_manager = get_template_manager()
+    return template_manager.render_monthly_overview(
+        next_month_schedules, 
+        next_month.year, 
+        next_month.month, 
+        sheet_url
+    )
 
 def send_template_email(template_content, template_type):
     """发送模板到邮箱"""
@@ -706,7 +652,8 @@ def main():
         
         page_options = [
             "📊 数据概览", 
-            "📝 模板生成器", 
+            "📝 模板生成器",
+            "🛠️ 模板编辑器", 
             "📅 日历管理",
             "⚙️ 系统设置"
         ]
@@ -735,6 +682,9 @@ def main():
     
     elif page == "📝 模板生成器":
         show_template_generator(data_result)
+    
+    elif page == "🛠️ 模板编辑器":
+        show_dynamic_template_editor()
     
     elif page == "📅 日历管理":
         show_calendar_management()
@@ -777,6 +727,195 @@ def show_system_settings():
             st.text(f"  • {file.name}")
     else:
         st.warning("📁 日历目录不存在")
+
+def show_dynamic_template_editor():
+    """显示动态模板编辑器"""
+    st.markdown('<div class="section-header">🛠️ 动态模板编辑器</div>', unsafe_allow_html=True)
+    st.markdown("在线编辑通知模板，支持本地和云端存储")
+    
+    # 获取模板管理器
+    template_manager = get_template_manager()
+    
+    # 显示当前模板来源
+    col1, col2 = st.columns(2)
+    with col1:
+        if template_manager.is_cloud_mode:
+            st.info("🌐 当前使用云端模板存储")
+            if template_manager.gcp_bucket_name:
+                st.code(f"Bucket: {template_manager.gcp_bucket_name}")
+        else:
+            st.info("💻 当前使用本地模板存储")
+            st.code(f"文件: {template_manager.local_template_file}")
+    
+    with col2:
+        metadata = template_manager.templates_data.get('metadata', {})
+        last_updated = metadata.get('last_updated', '未知')
+        st.metric("最后更新", last_updated[:16] if last_updated != '未知' else '未知')
+    
+    # 创建标签页
+    tab1, tab2, tab3 = st.tabs(["📝 编辑模板", "👁️ 预览效果", "💾 保存管理"])
+    
+    with tab1:
+        # 选择要编辑的模板
+        template_types = {
+            'weekly_confirmation': '📅 周三确认通知',
+            'saturday_reminder': '🔔 周六提醒通知', 
+            'monthly_overview': '📊 月度总览通知'
+        }
+        
+        selected_type = st.selectbox(
+            "选择要编辑的模板:",
+            options=list(template_types.keys()),
+            format_func=lambda x: template_types[x]
+        )
+        
+        template_config = template_manager.get_template(selected_type)
+        if not template_config:
+            st.error("模板配置不存在")
+            return
+        
+        # 编辑模板内容
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("#### 主模板内容")
+            current_template = template_config.get('template', '')
+            new_template = st.text_area(
+                "模板内容:",
+                value=current_template,
+                height=300,
+                help="使用 {变量名} 来插入动态内容",
+                key=f"template_{selected_type}"
+            )
+            
+            # 验证模板
+            is_valid, validation_msg = template_manager.validate_template(selected_type, new_template)
+            if is_valid:
+                st.success(f"✅ {validation_msg}")
+            else:
+                st.error(f"❌ {validation_msg}")
+        
+        with col2:
+            st.markdown("#### 可用变量")
+            variables = template_manager.get_template_variables(selected_type)
+            if variables:
+                for var, desc in variables.items():
+                    st.code(f"{{{var}}}")
+                    st.caption(desc)
+            else:
+                st.info("该模板暂无变量说明")
+            
+            # 模板操作
+            st.markdown("#### 操作")
+            if st.button("💾 应用更改", type="primary", use_container_width=True):
+                if is_valid:
+                    template_config['template'] = new_template
+                    template_manager.update_template(selected_type, template_config)
+                    st.success("✅ 模板更改已应用！")
+                    st.rerun()
+                else:
+                    st.error("❌ 模板验证失败，无法应用更改")
+    
+    with tab2:
+        st.markdown("### 👁️ 模板预览")
+        
+        # 创建测试数据
+        test_date = date.today() + timedelta(days=7)
+        test_schedule = MinistryAssignment(
+            date=test_date,
+            audio_tech="Jimmy",
+            video_director="靖铮",
+            propresenter_play="张宇",
+            propresenter_update="Daniel"
+        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 有安排时的效果")
+            try:
+                if selected_type == 'weekly_confirmation':
+                    preview = template_manager.render_weekly_confirmation(test_date, test_schedule)
+                elif selected_type == 'saturday_reminder':
+                    preview = template_manager.render_saturday_reminder(test_date, test_schedule)
+                elif selected_type == 'monthly_overview':
+                    preview = template_manager.render_monthly_overview([test_schedule], test_date.year, test_date.month)
+                
+                st.code(preview, language=None)
+                
+            except Exception as e:
+                st.error(f"❌ 预览生成失败: {e}")
+        
+        with col2:
+            st.markdown("#### 无安排时的效果")
+            try:
+                if selected_type in ['weekly_confirmation', 'saturday_reminder']:
+                    if selected_type == 'weekly_confirmation':
+                        no_preview = template_manager.render_weekly_confirmation(test_date, None)
+                    else:
+                        no_preview = template_manager.render_saturday_reminder(test_date, None)
+                    
+                    st.code(no_preview, language=None)
+                else:
+                    st.markdown("#### 模板说明")
+                    st.markdown(f"**{template_config.get('name', selected_type)}**")
+                    st.markdown(template_config.get('description', '暂无描述'))
+                    
+            except Exception as e:
+                st.error(f"❌ 无安排预览生成失败: {e}")
+    
+    with tab3:
+        st.markdown("### 💾 保存和管理")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("💾 保存到本地", use_container_width=True):
+                if template_manager.save_templates(update_cloud=False):
+                    st.success("✅ 已保存到本地文件")
+                else:
+                    st.error("❌ 保存到本地失败")
+        
+        with col2:
+            if template_manager.is_cloud_mode:
+                if st.button("☁️ 保存到云端", type="primary", use_container_width=True):
+                    if template_manager.save_templates(update_cloud=True):
+                        st.success("✅ 已保存到云端存储")
+                    else:
+                        st.error("❌ 保存到云端失败")
+            else:
+                st.button("☁️ 保存到云端", use_container_width=True, disabled=True, 
+                         help="仅在云端环境可用")
+        
+        with col3:
+            if st.button("🔄 重新加载", use_container_width=True):
+                # 清除缓存并重新加载
+                st.cache_resource.clear()
+                template_manager.load_templates()
+                st.success("✅ 模板已重新加载")
+                st.rerun()
+        
+        # 备份管理
+        st.markdown("---")
+        st.markdown("#### 🗂️ 备份管理")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📋 创建备份", use_container_width=True):
+                if template_manager.backup_templates():
+                    st.success("✅ 备份创建成功")
+                else:
+                    st.error("❌ 备份创建失败")
+        
+        with col2:
+            # 显示模板统计
+            templates = template_manager.templates_data.get('templates', {})
+            st.metric("模板数量", len(templates))
+        
+        # 显示当前配置
+        with st.expander("🔧 查看完整配置"):
+            st.json(template_manager.templates_data)
 
 # ==================== 应用启动 ====================
 

@@ -50,7 +50,7 @@ files:
     - "app_with_static_routes.py"  # 主应用文件
     - "Dockerfile"                 # Docker配置
     - "requirements.txt"           # Python依赖
-    - "generate_real_calendars.py" # 日历生成脚本
+    - "src/calendar_generator.py" # 日历生成脚本
     - "debug_calendar_files.py"    # 调试工具
     
   optional:

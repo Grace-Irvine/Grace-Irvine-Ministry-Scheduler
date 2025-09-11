@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-生成真实的ICS日历文件
-Generate real ICS calendar files with actual data
+ICS日历生成器
+ICS Calendar Generator
+
+负责生成事工排程的ICS日历文件，包括：
+- 负责人日历（通知提醒事件）
+- 同工日历（服事安排事件）
 """
 
 import os
@@ -10,60 +14,32 @@ from pathlib import Path
 from datetime import datetime, date, timedelta
 
 # 添加项目根目录到路径
-sys.path.append(str(Path(__file__).parent))
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data_cleaner import FocusedDataCleaner
-from src.template_manager import NotificationTemplateManager, get_default_template_manager
+from src.dynamic_template_manager import DynamicTemplateManager
 from dotenv import load_dotenv
 
+# 全局模板管理器实例
+template_manager = None
+
+def get_template_manager():
+    """获取模板管理器实例"""
+    global template_manager
+    if template_manager is None:
+        template_manager = DynamicTemplateManager()
+    return template_manager
+
 def generate_unified_wednesday_template(sunday_date, schedule):
-    """统一的周三确认通知模板生成器（与前端一致）"""
-    template = f"""【本周{sunday_date.month}月{sunday_date.day}日主日事工安排提醒】🕊️
-
-"""
-    
-    assignments = schedule.get_all_assignments() if schedule else {}
-    
-    if assignments:
-        for role, person in assignments.items():
-            template += f"• {role}：{person}\n"
-    else:
-        template += "• 音控：待安排\n• 导播/摄影：待安排\n• ProPresenter播放：待安排\n• ProPresenter更新：待安排\n"
-    
-    template += """• 视频剪辑：靖铮
-
-请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏"""
-    
-    return template
+    """统一的周三确认通知模板生成器（使用动态模板）"""
+    manager = get_template_manager()
+    return manager.render_weekly_confirmation(sunday_date, schedule)
 
 def generate_unified_saturday_template(sunday_date, schedule):
-    """统一的周六提醒通知模板生成器（与前端一致）"""
-    template = f"""【主日服事提醒】✨
-明天 8:30布置/ 9:00彩排 / 10:00 正式敬拜  
-请各位同工提前到场：  
-
-"""
-    
-    assignments = schedule.get_all_assignments() if schedule else {}
-    
-    if assignments.get('音控'):
-        template += f"- 音控：{assignments['音控']} 9:00到，随敬拜团排练\n"
-    else:
-        template += "- 音控：待确认 9:00到，随敬拜团排练\n"
-    
-    if assignments.get('导播/摄影'):
-        template += f"- 导播/摄影: {assignments['导播/摄影']} 9:30到，检查预设机位\n"
-    else:
-        template += "- 导播/摄影: 待确认 9:30到，检查预设机位\n"
-    
-    if assignments.get('ProPresenter播放'):
-        template += f"- ProPresenter播放：{assignments['ProPresenter播放']} 9:00到，随敬拜团排练\n"
-    else:
-        template += "- ProPresenter播放：待确认 9:00到，随敬拜团排练\n"
-    
-    template += "\n愿主同在，出入平安。若临时不适请第一时间私信我。🙌"
-    
-    return template
+    """统一的周六提醒通知模板生成器（使用动态模板）"""
+    manager = get_template_manager()
+    return manager.render_saturday_reminder(sunday_date, schedule)
 
 def escape_ics_text(text: str) -> str:
     """转义ICS文本中的特殊字符"""
@@ -117,7 +93,8 @@ def generate_coordinator_calendar():
             print("❌ 未找到排程数据")
             return False
         
-        template_manager = get_default_template_manager()
+        # 使用动态模板管理器
+        dynamic_template_manager = get_template_manager()
         
         # 创建ICS内容
         ics_lines = [
@@ -179,7 +156,8 @@ def generate_coordinator_calendar():
         ics_content = "\n".join(ics_lines)
         
         # 保存到文件
-        calendar_dir = Path("calendars")
+        calendar_dir = PROJECT_ROOT / "calendars"
+        calendar_dir.mkdir(exist_ok=True)
         output_file = calendar_dir / "grace_irvine_coordinator.ics"
         
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -194,86 +172,10 @@ def generate_coordinator_calendar():
         print(f"❌ 生成负责人日历失败: {e}")
         return False
 
-def generate_workers_calendar():
-    """生成同工日历"""
-    try:
-        print("📅 生成同工日历...")
-        
-        # 加载环境变量
-        load_dotenv()
-        
-        # 获取数据
-        cleaner = FocusedDataCleaner()
-        raw_df = cleaner.download_data()
-        focused_df = cleaner.extract_focused_columns(raw_df)
-        schedules = cleaner.clean_focused_data(focused_df)
-        
-        if not schedules:
-            print("❌ 未找到排程数据")
-            return False
-        
-        # 创建ICS内容
-        ics_lines = [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//Grace Irvine Ministry Scheduler//Workers Calendar//CN",
-            "CALSCALE:GREGORIAN",
-            "METHOD:PUBLISH",
-            "X-WR-CALNAME:Grace Irvine 同工服事日历",
-            "X-WR-CALDESC:同工事工服事安排日历（自动更新）",
-            "X-WR-TIMEZONE:America/Los_Angeles",
-            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        ]
-        
-        today = date.today()
-        future_schedules = [s for s in schedules if s.date >= today][:10]
-        events_created = 0
-        
-        for schedule in future_schedules:
-            # 为每个角色创建服事事件
-            service_roles = [
-                ("音控", schedule.audio_tech, "09:00", "12:00"),
-                ("导播/摄影", schedule.video_director, "09:30", "12:00"),
-                ("ProPresenter播放", schedule.propresenter_play, "09:00", "12:00")
-            ]
-            
-            for role_name, person_name, start_time, end_time in service_roles:
-                if person_name and person_name.strip():
-                    try:
-                        start_hour, start_minute = map(int, start_time.split(':'))
-                        end_hour, end_minute = map(int, end_time.split(':'))
-                        
-                        event_ics = create_ics_event(
-                            uid=f"service_{role_name}_{schedule.date.strftime('%Y%m%d')}_{person_name}@graceirvine.org",
-                            summary=f"主日服事 - {role_name}",
-                            description=f"角色：{role_name}\n负责人：{person_name}\n到场时间：{start_time}\n\n愿主同在，出入平安！",
-                            start_dt=datetime.combine(schedule.date, datetime.min.time().replace(hour=start_hour, minute=start_minute)),
-                            end_dt=datetime.combine(schedule.date, datetime.min.time().replace(hour=end_hour, minute=end_minute)),
-                            location="Grace Irvine 教会"
-                        )
-                        ics_lines.append(event_ics)
-                        events_created += 1
-                    except Exception as e:
-                        print(f"❌ 创建 {person_name} 服事事件失败: {e}")
-        
-        ics_lines.append("END:VCALENDAR")
-        ics_content = "\n".join(ics_lines)
-        
-        # 保存到文件
-        calendar_dir = Path("calendars")
-        output_file = calendar_dir / "grace_irvine_workers.ics"
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(ics_content)
-        
-        print(f"✅ 同工日历已生成: {output_file}")
-        print(f"📋 包含 {events_created} 个事件")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ 生成同工日历失败: {e}")
-        return False
+# TODO: 同工日历功能留到下阶段开发
+# def generate_workers_calendar():
+#     """生成同工日历 - 留到下阶段开发"""
+#     pass
 
 def main():
     """主函数"""
@@ -287,35 +189,26 @@ def main():
         print("💡 或者设置环境变量: export GOOGLE_SPREADSHEET_ID=your_sheet_id")
         sys.exit(1)
     
-    success_count = 0
-    
     # 生成负责人日历
     if generate_coordinator_calendar():
-        success_count += 1
-    
-    # 生成同工日历
-    if generate_workers_calendar():
-        success_count += 1
-    
-    print(f"\n📊 生成结果: {success_count}/2 个日历文件生成成功")
-    
-    if success_count == 2:
-        print("✅ 所有日历文件生成完成！")
+        print("✅ 负责人日历生成完成！")
         
         # 显示订阅信息
         print("\n🔗 日历订阅信息:")
         print("=" * 50)
-        print("📋 固定文件名日历（用于订阅）:")
+        print("📋 负责人日历（用于订阅）:")
         print("  负责人日历: http://localhost:8080/calendars/grace_irvine_coordinator.ics")
-        print("  同工日历: http://localhost:8080/calendars/grace_irvine_workers.ics")
         
         print("\n💡 使用方法:")
         print("1. 在日历应用中订阅URL")
         print("2. 定期运行此脚本更新文件内容")
         print("3. 日历应用会自动检测文件变化并更新")
         
+        print("\n📝 注意:")
+        print("  同工日历功能留到下阶段开发")
+        
     else:
-        print("⚠️ 部分日历文件生成失败")
+        print("❌ 负责人日历生成失败")
         print("请检查Google Sheets连接和数据格式")
 
 if __name__ == "__main__":
