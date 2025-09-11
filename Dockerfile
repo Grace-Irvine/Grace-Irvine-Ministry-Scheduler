@@ -35,5 +35,5 @@ ENV STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
 # 暴露端口
 EXPOSE 8080
 
-# 启动命令 - 使用FastAPI处理静态路由
-CMD ["python3", "app_with_static_routes.py"]
+# 启动命令 - 使用统一应用
+CMD ["python3", "start.py", "--host", "0.0.0.0", "--port", "8080"]
