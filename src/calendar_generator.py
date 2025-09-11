@@ -155,16 +155,20 @@ def generate_coordinator_calendar():
         ics_lines.append("END:VCALENDAR")
         ics_content = "\n".join(ics_lines)
         
-        # 保存到文件
-        calendar_dir = PROJECT_ROOT / "calendars"
-        calendar_dir.mkdir(exist_ok=True)
-        output_file = calendar_dir / "grace_irvine_coordinator.ics"
+        # 使用云端存储管理器保存
+        from .cloud_storage_manager import get_storage_manager
+        storage_manager = get_storage_manager()
         
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(ics_content)
-        
-        print(f"✅ 负责人日历已生成: {output_file}")
-        print(f"📋 包含 {events_created} 个事件")
+        if storage_manager.write_ics_calendar(ics_content, "grace_irvine_coordinator.ics"):
+            print(f"✅ 负责人日历已生成并保存")
+            print(f"📋 包含 {events_created} 个事件")
+            
+            # 获取公开访问URL
+            public_url = storage_manager.get_public_calendar_url("grace_irvine_coordinator.ics")
+            print(f"🔗 公开订阅URL: {public_url}")
+        else:
+            print("❌ 日历文件保存失败")
+            return False
         
         return True
         

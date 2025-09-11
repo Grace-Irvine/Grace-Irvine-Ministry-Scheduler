@@ -50,55 +50,66 @@ class StaticFileServer:
     
     @staticmethod
     def serve_calendar_file(filename: str):
-        """提供ICS日历文件内容"""
+        """提供ICS日历文件内容（支持云端存储）"""
         try:
-            calendar_dir = Path("calendars")
-            if not calendar_dir.exists():
-                return None, "Calendar directory not found"
-            
-            file_path = calendar_dir / filename
-            if not file_path.exists():
-                return None, f"Calendar file {filename} not found"
-            
             if not filename.endswith('.ics'):
                 return None, "Only ICS files are allowed"
             
-            # 读取文件内容
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # 使用云端存储管理器读取
+            from src.cloud_storage_manager import get_storage_manager
+            storage_manager = get_storage_manager()
             
-            return content, None
+            content = storage_manager.read_ics_calendar(filename)
+            
+            if content:
+                return content, None
+            else:
+                return None, f"Calendar file {filename} not found"
             
         except Exception as e:
             return None, f"Error serving calendar file: {str(e)}"
     
     @staticmethod
     def get_calendar_status():
-        """获取日历文件状态"""
+        """获取日历文件状态（支持云端存储）"""
         try:
-            calendar_dir = Path("calendars")
+            from src.cloud_storage_manager import get_storage_manager
+            storage_manager = get_storage_manager()
+            
+            # 获取存储状态
+            storage_status = storage_manager.get_storage_status()
+            
             status = {
                 'status': 'healthy',
                 'timestamp': datetime.now().isoformat(),
                 'service': 'Grace Irvine Ministry Scheduler',
+                'storage_mode': storage_status['mode'],
                 'calendars': {}
             }
             
-            if calendar_dir.exists():
-                for ics_file in calendar_dir.glob("*.ics"):
-                    try:
-                        stat = ics_file.stat()
-                        with open(ics_file, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                        
-                        status['calendars'][ics_file.name] = {
-                            'size': f"{stat.st_size / 1024:.1f} KB",
-                            'events': content.count("BEGIN:VEVENT"),
-                            'last_modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                            'valid_ics': content.startswith('BEGIN:VCALENDAR') and content.endswith('END:VCALENDAR')
-                        }
-                    except Exception as e:
-                        status['calendars'][ics_file.name] = {'error': str(e)}
+            # 检查日历文件
+            calendar_files = ['grace_irvine_coordinator.ics']
+            
+            for filename in calendar_files:
+                file_status = storage_manager.get_file_status(f"calendars/{filename}")
+                
+                # 读取文件内容进行分析
+                content = storage_manager.read_ics_calendar(filename)
+                
+                if content:
+                    status['calendars'][filename] = {
+                        'size': f"{len(content.encode('utf-8')) / 1024:.1f} KB",
+                        'events': content.count("BEGIN:VEVENT"),
+                        'local_exists': file_status['local_exists'],
+                        'cloud_exists': file_status['cloud_exists'],
+                        'last_modified': file_status.get('local_modified') or file_status.get('cloud_modified'),
+                        'valid_ics': content.startswith('BEGIN:VCALENDAR') and content.endswith('END:VCALENDAR'),
+                        'sync_needed': file_status.get('sync_needed', False)
+                    }
+                else:
+                    status['calendars'][filename] = {
+                        'error': 'File not found in any storage location'
+                    }
             
             return status
             
