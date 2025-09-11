@@ -402,30 +402,156 @@ def show_calendar_management():
         
         if st.button("🔍 查看ICS事件内容", use_container_width=True):
             show_ics_events_content()
+        
+        if st.button("☁️ 推送到云端Bucket", type="primary", use_container_width=True):
+            upload_ics_to_bucket()
 
 def show_subscription_info():
     """显示订阅信息"""
     st.markdown("### 🔗 日历订阅信息")
     
-    # 获取当前URL（在实际部署时需要配置正确的域名）
-    base_url = "http://localhost:8501"  # 本地开发
-    if 'K_SERVICE' in os.environ:
-        # Cloud Run环境
-        base_url = os.getenv('CLOUD_RUN_URL', 'https://your-service-url.run.app')
+    try:
+        # 获取云存储管理器
+        from src.cloud_storage_manager import get_storage_manager
+        storage_manager = get_storage_manager()
+        
+        # 根据存储模式显示不同的订阅URL
+        if storage_manager.is_cloud_mode and storage_manager.storage_client:
+            # 云端模式 - 使用GCS公开URL
+            st.success("☁️ 云端模式 - 推荐使用云端订阅链接")
+            coordinator_url = storage_manager.get_public_calendar_url("grace_irvine_coordinator.ics")
+            st.code(f"负责人日历（云端）: {coordinator_url}")
+            
+            # 显示bucket信息
+            st.info(f"📂 存储位置: gs://{storage_manager.config.bucket_name}/calendars/")
+            
+        else:
+            # 本地模式
+            st.info("💻 本地模式 - 使用应用服务器链接")
+            base_url = "http://localhost:8501"
+            if 'K_SERVICE' in os.environ:
+                base_url = os.getenv('CLOUD_RUN_URL', 'https://your-service-url.run.app')
+            
+            coordinator_url = f"{base_url}/calendars/grace_irvine_coordinator.ics"
+            st.code(f"负责人日历（本地）: {coordinator_url}")
+            
+            st.warning("💡 提示：推送到云端Bucket后可获得更稳定的订阅链接")
+        
+        st.info("📝 同工日历功能留到下阶段开发")
+        
+        st.markdown("""
+        **📱 订阅方法:**
+        1. **Google Calendar**: 左侧"+" → "从URL添加" → 粘贴链接
+        2. **Apple Calendar**: "文件" → "新建日历订阅" → 输入URL  
+        3. **Outlook**: "添加日历" → "从Internet订阅" → 输入URL
+        
+        ⚠️ **重要**: 请使用"订阅URL"而不是"导入文件"，这样才能自动更新
+        
+        **☁️ 云端订阅优势:**
+        - 🔄 自动同步更新
+        - 🌐 全球CDN加速
+        - 📱 移动设备友好
+        - 🔒 稳定可靠访问
+        """)
+        
+    except Exception as e:
+        st.error(f"❌ 获取订阅信息失败: {str(e)}")
+        st.markdown("请检查云存储配置或联系管理员")
+
+def upload_ics_to_bucket():
+    """上传ICS文件到云端Bucket"""
+    st.markdown("### ☁️ 推送ICS到云端Bucket")
     
-    coordinator_url = f"{base_url}/calendars/grace_irvine_coordinator.ics"
-    
-    st.code(f"负责人日历: {coordinator_url}")
-    st.info("📝 同工日历功能留到下阶段开发")
-    
-    st.markdown("""
-    **📱 订阅方法:**
-    1. **Google Calendar**: 左侧"+" → "从URL添加" → 粘贴链接
-    2. **Apple Calendar**: "文件" → "新建日历订阅" → 输入URL  
-    3. **Outlook**: "添加日历" → "从Internet订阅" → 输入URL
-    
-    ⚠️ **重要**: 请使用"订阅URL"而不是"导入文件"，这样才能自动更新
-    """)
+    try:
+        # 获取云存储管理器
+        from src.cloud_storage_manager import get_storage_manager
+        storage_manager = get_storage_manager()
+        
+        # 检查是否支持云端上传
+        if not storage_manager.is_cloud_mode or not storage_manager.storage_client:
+            st.warning("⚠️ 云端存储不可用，请检查以下配置：")
+            st.code("""
+环境变量配置：
+export GCP_STORAGE_BUCKET=grace-irvine-ministry-scheduler
+export GOOGLE_CLOUD_PROJECT=ai-for-god
+export STORAGE_MODE=cloud
+            """)
+            return
+        
+        # 显示当前bucket信息
+        st.info(f"🗂️ 目标Bucket: `gs://{storage_manager.config.bucket_name}`")
+        
+        # 获取本地ICS文件列表
+        calendar_dir = Path("calendars")
+        if not calendar_dir.exists():
+            st.error("📁 本地日历目录不存在，请先生成日历文件")
+            return
+        
+        ics_files = list(calendar_dir.glob("*.ics"))
+        if not ics_files:
+            st.warning("📄 未找到ICS文件，请先生成日历文件")
+            return
+        
+        # 显示可上传的文件
+        st.markdown("#### 📋 可上传的ICS文件")
+        upload_results = {}
+        
+        with st.spinner("正在推送ICS文件到云端..."):
+            for ics_file in ics_files:
+                try:
+                    # 读取文件内容
+                    with open(ics_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # 上传到bucket
+                    success = storage_manager.write_ics_calendar(content, ics_file.name)
+                    upload_results[ics_file.name] = success
+                    
+                    if success:
+                        st.success(f"✅ {ics_file.name} 上传成功")
+                    else:
+                        st.error(f"❌ {ics_file.name} 上传失败")
+                        
+                except Exception as e:
+                    st.error(f"❌ {ics_file.name} 上传异常: {str(e)}")
+                    upload_results[ics_file.name] = False
+        
+        # 显示上传结果统计
+        successful_uploads = sum(1 for success in upload_results.values() if success)
+        total_files = len(upload_results)
+        
+        if successful_uploads == total_files:
+            st.success(f"🎉 全部完成！成功推送 {successful_uploads} 个ICS文件到云端")
+        elif successful_uploads > 0:
+            st.warning(f"⚠️ 部分完成：{successful_uploads}/{total_files} 个文件推送成功")
+        else:
+            st.error("❌ 推送失败，请检查网络连接和权限配置")
+        
+        # 显示云端访问URL
+        if successful_uploads > 0:
+            st.markdown("#### 🔗 云端访问链接")
+            for filename, success in upload_results.items():
+                if success:
+                    public_url = storage_manager.get_public_calendar_url(filename)
+                    st.code(f"📅 {filename}: {public_url}")
+        
+        # 同步其他重要文件的选项
+        if st.button("🔄 同步所有配置文件", use_container_width=True):
+            with st.spinner("正在同步配置文件..."):
+                sync_results = storage_manager.sync_all_files()
+                
+                for file_path, success in sync_results.items():
+                    if success:
+                        st.success(f"✅ 同步成功: {file_path}")
+                    else:
+                        st.error(f"❌ 同步失败: {file_path}")
+                        
+    except Exception as e:
+        st.error(f"❌ 推送过程中出现异常: {str(e)}")
+        st.markdown("**可能的解决方案：**")
+        st.markdown("1. 检查网络连接")
+        st.markdown("2. 验证GCP权限配置")
+        st.markdown("3. 确认Bucket是否存在")
 
 def show_ics_events_content():
     """显示ICS事件内容"""
