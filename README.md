@@ -40,6 +40,7 @@ python start.py --port 8080
   - 月度总览通知
 - ✅ **邮件发送**: 发送通知模板到邮箱
 - ✅ **ICS日历**: 生成可订阅的日历文件
+- ✅ **自动更新**: 每4小时自动从Google Sheets更新ICS（GCP Cloud Scheduler）
 - ✅ **Web界面**: 直观的管理界面
 - ✅ **云端部署**: 支持Google Cloud Run部署
 
@@ -110,8 +111,13 @@ docker run -p 8080:8080 grace-scheduler
 ### Google Cloud Run部署
 ```bash
 # 部署到Cloud Run
-python deploy_cloud_run_with_static.py
+python deploy_to_cloud_run.py
+
+# 设置自动更新（每4小时）
+./cloud_scheduler_setup.sh
 ```
+
+详细说明请参考 [自动更新设置指南](docs/AUTO_UPDATE_SETUP.md)
 
 ## 📁 项目结构
 

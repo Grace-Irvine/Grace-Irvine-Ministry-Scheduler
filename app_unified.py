@@ -45,6 +45,15 @@ logger = logging.getLogger(__name__)
 
 # ==================== 静态文件服务功能 ====================
 
+# API endpoints for automatic updates
+import uvicorn
+from fastapi import FastAPI, Response, HTTPException, Header
+from fastapi.responses import FileResponse, JSONResponse
+import asyncio
+
+# Create FastAPI app for API endpoints
+api_app = FastAPI(title="Grace Irvine Ministry Scheduler API", version="2.0")
+
 class StaticFileServer:
     """内置的静态文件服务器，用于提供ICS日历文件"""
     
@@ -118,6 +127,160 @@ class StaticFileServer:
                 'status': 'error',
                 'error': str(e)
             }
+
+# ==================== API端点功能 ====================
+
+@api_app.get("/api/health")
+async def health_check():
+    """健康检查端点"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@api_app.get("/api/status")
+async def get_api_status():
+    """获取系统状态"""
+    status = StaticFileServer.get_calendar_status()
+    return JSONResponse(content=status)
+
+@api_app.post("/api/update-ics")
+async def trigger_ics_update(auth_token: str = Header(None, alias="X-Auth-Token")):
+    """
+    触发ICS文件更新
+    需要认证令牌（用于Cloud Scheduler）
+    """
+    # 验证认证令牌
+    expected_token = os.getenv("SCHEDULER_AUTH_TOKEN", "grace-irvine-scheduler-2025")
+    if auth_token != expected_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        logger.info("Starting automatic ICS update from API endpoint")
+        
+        # 执行自动更新流程
+        result = await automatic_ics_update()
+        
+        if result["success"]:
+            return JSONResponse(
+                content={
+                    "status": "success",
+                    "message": result["message"],
+                    "details": result.get("details", {}),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": result["message"],
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error in API update endpoint: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
+async def automatic_ics_update():
+    """
+    自动更新ICS文件的核心函数
+    1. 从Google Sheets读取最新数据
+    2. 从Bucket读取最新模板
+    3. 生成新的ICS文件
+    4. 上传到Bucket
+    """
+    try:
+        # 1. 从Google Sheets读取最新数据
+        logger.info("Step 1: Loading data from Google Sheets")
+        cleaner = FocusedDataCleaner()
+        raw_df = cleaner.download_data()
+        focused_df = cleaner.extract_focused_columns(raw_df)
+        schedules = cleaner.clean_focused_data(focused_df)
+        
+        if not schedules:
+            return {
+                "success": False,
+                "message": "No schedule data found in Google Sheets"
+            }
+        
+        # 2. 从Bucket读取最新模板
+        logger.info("Step 2: Loading templates from cloud storage")
+        from src.cloud_storage_manager import get_storage_manager
+        storage_manager = get_storage_manager()
+        
+        # 确保使用最新的云端模板
+        template_content = storage_manager.read_file("templates/dynamic_templates.json", "json")
+        if template_content:
+            # 更新本地模板缓存
+            local_template_path = Path("templates/dynamic_templates.json")
+            with open(local_template_path, 'w', encoding='utf-8') as f:
+                json.dump(template_content, f, ensure_ascii=False, indent=2)
+        
+        # 3. 生成新的ICS文件
+        logger.info("Step 3: Generating ICS calendar files")
+        from src.calendar_generator import generate_coordinator_calendar
+        
+        # 生成日历
+        success = generate_coordinator_calendar()
+        
+        if not success:
+            return {
+                "success": False,
+                "message": "Failed to generate ICS calendar"
+            }
+        
+        # 4. 确保上传到Bucket
+        logger.info("Step 4: Uploading to cloud storage")
+        calendar_path = Path("calendars/grace_irvine_coordinator.ics")
+        
+        if calendar_path.exists():
+            # 读取生成的文件
+            with open(calendar_path, 'r', encoding='utf-8') as f:
+                ics_content = f.read()
+            
+            # 上传到云端
+            upload_success = storage_manager.write_ics_calendar(
+                ics_content, 
+                "grace_irvine_coordinator.ics"
+            )
+            
+            if upload_success:
+                # 获取公开URL
+                public_url = storage_manager.get_public_calendar_url("grace_irvine_coordinator.ics")
+                
+                return {
+                    "success": True,
+                    "message": "ICS calendar updated successfully",
+                    "details": {
+                        "events_count": ics_content.count("BEGIN:VEVENT"),
+                        "file_size": f"{len(ics_content.encode('utf-8')) / 1024:.1f} KB",
+                        "public_url": public_url,
+                        "update_time": datetime.now().isoformat()
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Failed to upload ICS to cloud storage"
+                }
+        else:
+            return {
+                "success": False,
+                "message": "ICS file not found after generation"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in automatic ICS update: {e}")
+        return {
+            "success": False,
+            "message": f"Update failed: {str(e)}"
+        }
 
 # ==================== 应用配置 ====================
 
@@ -215,6 +378,44 @@ def load_ministry_data():
 
 def generate_calendar_files():
     """生成ICS日历文件"""
+    try:
+        # 检查是否在云端环境（通过K_SERVICE环境变量判断）
+        is_cloud_run = os.getenv("K_SERVICE") is not None or os.getenv("STORAGE_MODE") == "cloud"
+        
+        if is_cloud_run:
+            return call_api_update()
+        else:
+            # 本地环境，直接调用本地函数
+            return call_local_update()
+            
+    except Exception as e:
+        return False, f"生成异常: {str(e)}"
+
+def call_api_update():
+    """调用API服务进行更新"""
+    try:
+        import requests
+        
+        # 获取API服务URL
+        api_url = os.getenv("API_SERVICE_URL", "https://grace-irvine-api-760303847302.us-central1.run.app")
+        auth_token = os.getenv("SCHEDULER_AUTH_TOKEN", "grace-irvine-scheduler-2025")
+        
+        headers = {"X-Auth-Token": auth_token}
+        response = requests.post(f"{api_url}/api/update-ics", headers=headers, timeout=120)
+        
+        if response.status_code == 200:
+            result = response.json()
+            details = result.get("details", {})
+            files_count = details.get("files_count", "N/A")
+            return True, f"日历文件更新成功 (上传文件: {files_count})"
+        else:
+            return False, f"API调用失败: HTTP {response.status_code}"
+            
+    except Exception as e:
+        return False, f"API调用异常: {str(e)}"
+
+def call_local_update():
+    """本地更新（用于开发环境）"""
     try:
         # 运行日历生成脚本
         result = subprocess.run([

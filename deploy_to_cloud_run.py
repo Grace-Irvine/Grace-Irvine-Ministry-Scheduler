@@ -83,7 +83,7 @@ def main():
         --concurrency=80 \
         --max-instances=10 \
         --port=8080 \
-        --set-env-vars=GCP_STORAGE_BUCKET={STORAGE_BUCKET},GOOGLE_CLOUD_PROJECT={PROJECT_ID},STORAGE_MODE=cloud,PORT=8080
+        --set-env-vars=GCP_STORAGE_BUCKET={STORAGE_BUCKET},GOOGLE_CLOUD_PROJECT={PROJECT_ID},STORAGE_MODE=cloud,PORT=8080,API_PORT=8000,SCHEDULER_AUTH_TOKEN=grace-irvine-scheduler-2025
     """.replace('\n    ', ' \\\n    ')
     
     service_url = run_command(deploy_command, "部署Cloud Run服务")
