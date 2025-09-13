@@ -341,16 +341,26 @@ class CloudStorageManager:
                     blob.reload()
                     status['cloud_exists'] = True
                     status['cloud_size'] = blob.size
-                    status['cloud_modified'] = blob.time_created.isoformat()
+                    # 使用更新时间而不是创建时间
+                    status['cloud_modified'] = blob.updated.isoformat() if blob.updated else blob.time_created.isoformat()
                     
                     # 判断是否需要同步
                     if status['local_exists'] and status['cloud_exists']:
                         local_time = datetime.fromisoformat(status['local_modified'])
-                        cloud_time = blob.time_created.replace(tzinfo=None)
-                        status['sync_needed'] = abs((local_time - cloud_time).total_seconds()) > 60
+                        # 使用更新时间进行比较
+                        cloud_time = (blob.updated or blob.time_created).replace(tzinfo=None)
+                        # 允许更大的时间差容忍度（5分钟）
+                        time_diff = abs((local_time - cloud_time).total_seconds())
+                        status['sync_needed'] = time_diff > 300  # 5分钟
+                        
+                        # 添加调试信息
+                        logger.debug(f"文件同步检查 {file_path}: 本地={local_time}, 云端={cloud_time}, 时间差={time_diff}秒")
                         
             except Exception as e:
                 logger.error(f"检查云端文件状态失败 {file_path}: {e}")
+        elif status['local_exists']:
+            # 如果是本地模式但有本地文件，标记为需要同步（如果用户想要云端同步的话）
+            status['sync_needed'] = None  # 表示无法确定同步状态
         
         return status
     
@@ -478,6 +488,76 @@ class CloudStorageManager:
             status['files'][file_path] = self.get_file_status(file_path)
         
         return status
+    
+    def verify_cloud_save(self, file_path: str) -> Dict[str, Any]:
+        """验证文件是否正确保存到云端
+        
+        Args:
+            file_path: 要验证的文件路径
+            
+        Returns:
+            验证结果字典
+        """
+        result = {
+            'success': False,
+            'message': '',
+            'details': {},
+            'cloud_url': None
+        }
+        
+        if not self.is_cloud_mode:
+            result['message'] = '当前为本地模式，无法验证云端保存'
+            return result
+        
+        if not self.storage_client:
+            result['message'] = '云端存储客户端不可用'
+            return result
+        
+        try:
+            # 检查云端文件
+            blob = self.bucket.blob(file_path)
+            if not blob.exists():
+                result['message'] = f'文件在云端不存在: {file_path}'
+                return result
+            
+            # 重新加载blob信息
+            blob.reload()
+            
+            # 获取文件详细信息
+            result['details'] = {
+                'cloud_path': f'gs://{self.config.bucket_name}/{file_path}',
+                'size': blob.size,
+                'content_type': blob.content_type,
+                'created': blob.time_created.isoformat() if blob.time_created else None,
+                'updated': blob.updated.isoformat() if blob.updated else None,
+                'md5_hash': blob.md5_hash,
+                'etag': blob.etag
+            }
+            
+            # 生成公开访问URL（如果适用）
+            if file_path.startswith('calendars/') and file_path.endswith('.ics'):
+                result['cloud_url'] = f'https://storage.googleapis.com/{self.config.bucket_name}/{file_path}'
+            
+            # 验证文件内容可读性
+            try:
+                content = blob.download_as_text(encoding='utf-8')
+                if len(content) > 0:
+                    result['details']['content_preview'] = content[:200] + '...' if len(content) > 200 else content
+                    result['details']['content_length'] = len(content)
+                else:
+                    result['message'] = '云端文件存在但内容为空'
+                    return result
+            except Exception as e:
+                result['message'] = f'云端文件存在但无法读取内容: {e}'
+                return result
+            
+            result['success'] = True
+            result['message'] = '文件已成功保存到云端并可正常访问'
+            
+        except Exception as e:
+            result['message'] = f'验证云端保存时出错: {e}'
+        
+        return result
 
 # 全局实例
 _storage_manager = None

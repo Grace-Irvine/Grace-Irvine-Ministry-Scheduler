@@ -116,8 +116,13 @@ class DynamicTemplateManager:
         
         self.templates_data['metadata']['last_updated'] = datetime.now().isoformat()
         
-        # 使用存储管理器保存
-        return self.storage_manager.write_template_config(self.templates_data)
+        # 使用存储管理器保存，传递云端同步参数
+        return self.storage_manager.write_file(
+            "templates/dynamic_templates.json", 
+            self.templates_data,
+            sync_to_cloud=update_cloud,
+            backup=True
+        )
     
     def _create_default_templates(self):
         """创建默认模板配置"""
