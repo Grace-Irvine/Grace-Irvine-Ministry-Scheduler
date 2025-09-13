@@ -915,47 +915,11 @@ def show_dynamic_template_editor():
             st.error("模板配置不存在")
             return
         
-        # 编辑模板内容
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.markdown("#### 主模板内容")
-            current_template = template_config.get('template', '')
-            new_template = st.text_area(
-                "模板内容:",
-                value=current_template,
-                height=300,
-                help="使用 {变量名} 来插入动态内容",
-                key=f"template_{selected_type}"
-            )
-            
-            # 验证模板
-            is_valid, validation_msg = template_manager.validate_template(selected_type, new_template)
-            if is_valid:
-                st.success(f"✅ {validation_msg}")
-            else:
-                st.error(f"❌ {validation_msg}")
-        
-        with col2:
-            st.markdown("#### 可用变量")
-            variables = template_manager.get_template_variables(selected_type)
-            if variables:
-                for var, desc in variables.items():
-                    st.code(f"{{{var}}}")
-                    st.caption(desc)
-            else:
-                st.info("该模板暂无变量说明")
-            
-            # 模板操作
-            st.markdown("#### 操作")
-            if st.button("💾 应用更改", type="primary", use_container_width=True):
-                if is_valid:
-                    template_config['template'] = new_template
-                    template_manager.update_template(selected_type, template_config)
-                    st.success("✅ 模板更改已应用！")
-                    st.rerun()
-                else:
-                    st.error("❌ 模板验证失败，无法应用更改")
+        # 根据模板类型显示不同的编辑界面
+        if selected_type == 'saturday_reminder':
+            show_saturday_template_detailed_editor(template_manager, template_config)
+        else:
+            show_standard_template_editor(template_manager, template_config, selected_type)
     
     with tab2:
         st.markdown("### 👁️ 模板预览")
@@ -970,40 +934,122 @@ def show_dynamic_template_editor():
             propresenter_update="Daniel"
         )
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### 有安排时的效果")
-            try:
-                if selected_type == 'weekly_confirmation':
-                    preview = template_manager.render_weekly_confirmation(test_date, test_schedule)
-                elif selected_type == 'saturday_reminder':
+        if selected_type == 'saturday_reminder':
+            # 周六模板的特殊预览界面
+            st.markdown("#### 🔔 周六提醒通知预览效果")
+            
+            # 显示当前配置摘要
+            service_times = template_config.get('service_times', {})
+            service_instructions = template_config.get('service_instructions', {})
+            
+            with st.expander("📋 当前配置摘要"):
+                st.markdown("**到岗时间设置:**")
+                for role, time in service_times.items():
+                    st.text(f"• {role}: {time}")
+                
+                st.markdown("**具体说明设置:**")
+                for role, instruction in service_instructions.items():
+                    st.text(f"• {role}: {instruction}")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### ✅ 有人员安排时")
+                try:
                     preview = template_manager.render_saturday_reminder(test_date, test_schedule)
-                elif selected_type == 'monthly_overview':
-                    preview = template_manager.render_monthly_overview([test_schedule], test_date.year, test_date.month)
-                
-                st.code(preview, language=None)
-                
-            except Exception as e:
-                st.error(f"❌ 预览生成失败: {e}")
+                    st.code(preview, language=None)
+                    
+                    # 显示detail解析
+                    st.markdown("**Detail解析:**")
+                    detail_format = template_config.get('detail_format', '{person} {time}到，{instruction}')
+                    
+                    roles = {
+                        'audio_tech': '音控',
+                        'video_director': '导播/摄影', 
+                        'propresenter_play': 'ProPresenter播放',
+                        'propresenter_update': 'ProPresenter更新'
+                    }
+                    
+                    for var_name, role_name in roles.items():
+                        person = getattr(test_schedule, var_name, None)
+                        if person:
+                            time = service_times.get(role_name, '9:00')
+                            instruction = service_instructions.get(role_name, '请提前到场')
+                            detail = detail_format.format(person=person, time=time, instruction=instruction)
+                            st.text(f"• {var_name}_detail: {detail}")
+                    
+                except Exception as e:
+                    st.error(f"❌ 预览生成失败: {e}")
+            
+            with col2:
+                st.markdown("#### ❌ 无人员安排时")
+                try:
+                    no_preview = template_manager.render_saturday_reminder(test_date, None)
+                    st.code(no_preview, language=None)
+                    
+                    # 显示默认detail解析
+                    st.markdown("**默认Detail解析:**")
+                    default_detail = template_config.get('default_detail', '待确认 {time}到，{instruction}')
+                    
+                    for var_name, role_name in roles.items():
+                        time = service_times.get(role_name, '9:00')
+                        instruction = service_instructions.get(role_name, '请提前到场')
+                        detail = default_detail.format(time=time, instruction=instruction)
+                        st.text(f"• {var_name}_detail: {detail}")
+                    
+                except Exception as e:
+                    st.error(f"❌ 无安排预览生成失败: {e}")
+            
+            # 实时预览工具
+            st.markdown("---")
+            st.markdown("#### 🧪 实时预览工具")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                test_person = st.text_input("测试人员名字:", value="测试同工", key="preview_person")
+            
+            with col2:
+                test_time = st.text_input("测试到岗时间:", value="9:15", key="preview_time") 
+            
+            with col3:
+                test_instruction = st.text_input("测试具体说明:", value="提前调试设备", key="preview_instruction")
+            
+            if st.button("🔍 生成实时预览", use_container_width=True, key="generate_live_preview"):
+                detail_format = template_config.get('detail_format', '{person} {time}到，{instruction}')
+                test_detail = detail_format.format(person=test_person, time=test_time, instruction=test_instruction)
+                st.success(f"生成的Detail: **{test_detail}**")
         
-        with col2:
-            st.markdown("#### 无安排时的效果")
-            try:
-                if selected_type in ['weekly_confirmation', 'saturday_reminder']:
+        else:
+            # 其他模板的标准预览
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### 有安排时的效果")
+                try:
+                    if selected_type == 'weekly_confirmation':
+                        preview = template_manager.render_weekly_confirmation(test_date, test_schedule)
+                    elif selected_type == 'monthly_overview':
+                        preview = template_manager.render_monthly_overview([test_schedule], test_date.year, test_date.month)
+                    
+                    st.code(preview, language=None)
+                    
+                except Exception as e:
+                    st.error(f"❌ 预览生成失败: {e}")
+            
+            with col2:
+                st.markdown("#### 无安排时的效果")
+                try:
                     if selected_type == 'weekly_confirmation':
                         no_preview = template_manager.render_weekly_confirmation(test_date, None)
+                        st.code(no_preview, language=None)
                     else:
-                        no_preview = template_manager.render_saturday_reminder(test_date, None)
-                    
-                    st.code(no_preview, language=None)
-                else:
-                    st.markdown("#### 模板说明")
-                    st.markdown(f"**{template_config.get('name', selected_type)}**")
-                    st.markdown(template_config.get('description', '暂无描述'))
-                    
-            except Exception as e:
-                st.error(f"❌ 无安排预览生成失败: {e}")
+                        st.markdown("#### 模板说明")
+                        st.markdown(f"**{template_config.get('name', selected_type)}**")
+                        st.markdown(template_config.get('description', '暂无描述'))
+                        
+                except Exception as e:
+                    st.error(f"❌ 无安排预览生成失败: {e}")
     
     with tab3:
         st.markdown("### 💾 保存和管理")
@@ -1018,15 +1064,50 @@ def show_dynamic_template_editor():
                     st.error("❌ 保存到本地失败")
         
         with col2:
-            if template_manager.is_cloud_mode:
-                if st.button("☁️ 保存到云端", type="primary", use_container_width=True):
-                    if template_manager.save_templates(update_cloud=True):
-                        st.success("✅ 已保存到云端存储")
-                    else:
-                        st.error("❌ 保存到云端失败")
-            else:
-                st.button("☁️ 保存到云端", use_container_width=True, disabled=True, 
-                         help="仅在云端环境可用")
+            # 检查云端存储可用性
+            cloud_available = (template_manager.storage_manager.is_cloud_mode and 
+                             template_manager.storage_manager.storage_client)
+            
+            if st.button("☁️ 保存到云端", type="primary", use_container_width=True, 
+                        disabled=not cloud_available):
+                if cloud_available:
+                    with st.spinner("正在保存到云端..."):
+                        if template_manager.save_templates(update_cloud=True):
+                            st.success("✅ 已保存到云端存储")
+                            
+                            # 验证云端保存
+                            import time
+                            time.sleep(1)  # 等待云端上传完成
+                            
+                            verification = template_manager.storage_manager.verify_cloud_save("templates/dynamic_templates.json")
+                            
+                            if verification['success']:
+                                st.success("🔍 云端保存验证成功")
+                                
+                                # 显示详细信息
+                                details = verification['details']
+                                st.info(f"📂 云端位置: {details['cloud_path']}")
+                                st.info(f"📊 文件大小: {details['size']} 字节")
+                                st.info(f"🕐 更新时间: {details['updated'][:19] if details['updated'] else '未知'}")
+                                
+                                # 显示内容预览
+                                if 'content_preview' in details:
+                                    with st.expander("📄 内容预览"):
+                                        st.code(details['content_preview'], language='json')
+                            else:
+                                st.warning(f"⚠️ 云端保存验证失败: {verification['message']}")
+                        else:
+                            st.error("❌ 保存到云端失败")
+                            st.error("请检查网络连接和GCP权限配置")
+                else:
+                    st.error("❌ 云端存储不可用")
+            
+            # 显示云端状态提示
+            if not cloud_available:
+                if not template_manager.storage_manager.is_cloud_mode:
+                    st.caption("💡 当前为本地模式，需要云端环境才能保存到云端")
+                elif not template_manager.storage_manager.storage_client:
+                    st.caption("⚠️ 云端存储客户端未初始化，请检查GCP配置")
         
         with col3:
             if st.button("🔄 重新加载", use_container_width=True):
@@ -1057,6 +1138,331 @@ def show_dynamic_template_editor():
         # 显示当前配置
         with st.expander("🔧 查看完整配置"):
             st.json(template_manager.templates_data)
+        
+        # 云端存储状态检查
+        st.markdown("---")
+        st.markdown("#### ☁️ 云端存储状态")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            storage_status = template_manager.storage_manager.get_storage_status()
+            
+            if storage_status['mode'] == 'cloud':
+                st.success("🌐 云端模式")
+                if storage_status['storage_available']:
+                    st.success("✅ 云端存储可用")
+                else:
+                    st.error("❌ 云端存储不可用")
+            else:
+                st.info("💻 本地模式")
+            
+            st.text(f"Bucket: {storage_status.get('bucket_name', 'N/A')}")
+        
+        with col2:
+            col2a, col2b = st.columns(2)
+            
+            with col2a:
+                if st.button("🔍 检查文件状态", use_container_width=True):
+                    template_file_status = template_manager.storage_manager.get_file_status("templates/dynamic_templates.json")
+                    
+                    st.markdown("**模板文件状态:**")
+                    st.text(f"本地存在: {'✅' if template_file_status['local_exists'] else '❌'}")
+                    st.text(f"云端存在: {'✅' if template_file_status['cloud_exists'] else '❌'}")
+                    
+                    if template_file_status['local_modified']:
+                        st.text(f"本地修改: {template_file_status['local_modified'][:19]}")
+                    if template_file_status['cloud_modified']:
+                        st.text(f"云端修改: {template_file_status['cloud_modified'][:19]}")
+                    
+                    # 处理同步状态
+                    sync_needed = template_file_status['sync_needed']
+                    if sync_needed is None:
+                        st.info("ℹ️ 无法确定同步状态（本地模式）")
+                    elif sync_needed:
+                        st.warning("⚠️ 需要同步")
+                        # 显示时间差信息
+                        if template_file_status['local_modified'] and template_file_status['cloud_modified']:
+                            from datetime import datetime
+                            local_time = datetime.fromisoformat(template_file_status['local_modified'])
+                            cloud_time = datetime.fromisoformat(template_file_status['cloud_modified'])
+                            time_diff = abs((local_time - cloud_time).total_seconds())
+                            st.caption(f"时间差: {time_diff:.0f} 秒")
+                    else:
+                        st.success("✅ 已同步")
+            
+            with col2b:
+                # 强制同步按钮
+                cloud_available = (template_manager.storage_manager.is_cloud_mode and 
+                                 template_manager.storage_manager.storage_client)
+                
+                if st.button("🔄 强制同步", use_container_width=True, disabled=not cloud_available):
+                    if cloud_available:
+                        with st.spinner("正在强制同步到云端..."):
+                            # 强制保存到云端
+                            success = template_manager.save_templates(update_cloud=True)
+                            if success:
+                                st.success("✅ 强制同步成功！")
+                                
+                                # 验证同步结果
+                                import time
+                                time.sleep(2)  # 等待云端上传完成
+                                
+                                verification = template_manager.storage_manager.verify_cloud_save("templates/dynamic_templates.json")
+                                if verification['success']:
+                                    st.success("🔍 云端同步验证成功")
+                                    details = verification['details']
+                                    st.caption(f"云端文件大小: {details['size']} 字节")
+                                    st.caption(f"更新时间: {details['updated'][:19] if details['updated'] else '未知'}")
+                                else:
+                                    st.warning(f"⚠️ 同步验证失败: {verification['message']}")
+                                
+                                # 刷新页面状态
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("❌ 强制同步失败")
+                    else:
+                        st.error("❌ 云端存储不可用")
+
+def show_saturday_template_detailed_editor(template_manager, template_config):
+    """显示周六模板的详细编辑器"""
+    st.markdown("#### 🔔 周六提醒通知 - 详细编辑")
+    st.info("💡 在这里可以分别编辑每个服事角色的到岗时间和说明，人员名字会作为变量动态插入")
+    
+    # 创建子标签页
+    detail_tab1, detail_tab2, detail_tab3 = st.tabs(["📝 主模板", "⏰ 时间配置", "📋 说明配置"])
+    
+    with detail_tab1:
+        # 主模板编辑
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("#### 主模板内容")
+            current_template = template_config.get('template', '')
+            new_template = st.text_area(
+                "模板内容:",
+                value=current_template,
+                height=200,
+                help="使用 {角色_detail} 来插入详细信息",
+                key="saturday_main_template"
+            )
+            
+            # detail_format 编辑
+            st.markdown("#### Detail格式模板")
+            current_detail_format = template_config.get('detail_format', '{person} {time}到，{instruction}')
+            new_detail_format = st.text_input(
+                "Detail格式:",
+                value=current_detail_format,
+                help="可用变量: {person}=人员名字, {time}=到岗时间, {instruction}=具体说明",
+                key="saturday_detail_format"
+            )
+            
+            # default_detail 编辑
+            current_default_detail = template_config.get('default_detail', '待确认 {time}到，{instruction}')
+            new_default_detail = st.text_input(
+                "无人员时的格式:",
+                value=current_default_detail,
+                help="当没有安排人员时使用的格式",
+                key="saturday_default_detail"
+            )
+        
+        with col2:
+            st.markdown("#### 可用变量")
+            st.code("{audio_tech_detail}")
+            st.caption("音控详细安排")
+            st.code("{video_director_detail}")
+            st.caption("导播/摄影详细安排")
+            st.code("{propresenter_play_detail}")
+            st.caption("ProPresenter播放详细安排")
+            st.code("{propresenter_update_detail}")
+            st.caption("ProPresenter更新详细安排")
+            
+            st.markdown("#### Detail格式变量")
+            st.code("{person}")
+            st.caption("人员名字（动态插入）")
+            st.code("{time}")
+            st.caption("到岗时间")
+            st.code("{instruction}")
+            st.caption("具体说明")
+    
+    with detail_tab2:
+        st.markdown("#### ⏰ 各角色到岗时间设置")
+        
+        service_times = template_config.get('service_times', {})
+        roles = {
+            '音控': 'audio_tech',
+            '导播/摄影': 'video_director',
+            'ProPresenter播放': 'propresenter_play',
+            'ProPresenter更新': 'propresenter_update'
+        }
+        
+        new_service_times = {}
+        
+        for role_name, role_key in roles.items():
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                st.markdown(f"**{role_name}**")
+            
+            with col2:
+                current_time = service_times.get(role_name, '9:00')
+                new_time = st.text_input(
+                    f"到岗时间:",
+                    value=current_time,
+                    key=f"time_{role_key}",
+                    help="例如: 9:00, 9:30, 提前等"
+                )
+                new_service_times[role_name] = new_time
+        
+        st.markdown("---")
+        st.markdown("#### 📋 时间预设模板")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("🎵 敬拜排练模式", use_container_width=True, key="worship_rehearsal_time"):
+                new_service_times['音控'] = '9:00'
+                new_service_times['导播/摄影'] = '9:30'
+                new_service_times['ProPresenter播放'] = '9:00'
+                new_service_times['ProPresenter更新'] = '提前'
+                st.success("✅ 已设置为敬拜排练时间")
+                st.rerun()
+        
+        with col2:
+            if st.button("🕐 统一时间", use_container_width=True, key="unified_time"):
+                unified_time = '9:00'
+                for role in new_service_times:
+                    new_service_times[role] = unified_time
+                st.success(f"✅ 已统一设置为 {unified_time}")
+                st.rerun()
+        
+        with col3:
+            if st.button("🔄 重置默认", use_container_width=True, key="reset_default_time"):
+                new_service_times = {
+                    '音控': '9:00',
+                    '导播/摄影': '9:30',
+                    'ProPresenter播放': '9:00',
+                    'ProPresenter更新': '提前'
+                }
+                st.success("✅ 已重置为默认时间")
+                st.rerun()
+    
+    with detail_tab3:
+        st.markdown("#### 📋 各角色具体说明设置")
+        
+        service_instructions = template_config.get('service_instructions', {})
+        new_service_instructions = {}
+        
+        for role_name, role_key in roles.items():
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                st.markdown(f"**{role_name}**")
+            
+            with col2:
+                current_instruction = service_instructions.get(role_name, '请提前到场')
+                new_instruction = st.text_input(
+                    f"具体说明:",
+                    value=current_instruction,
+                    key=f"instruction_{role_key}",
+                    help="例如: 随敬拜团排练, 检查预设机位, 提前准备内容等"
+                )
+                new_service_instructions[role_name] = new_instruction
+        
+        st.markdown("---")
+        st.markdown("#### 📋 说明预设模板")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🎵 敬拜配合模式", use_container_width=True, key="worship_cooperation_mode"):
+                new_service_instructions['音控'] = '随敬拜团排练'
+                new_service_instructions['导播/摄影'] = '检查预设机位'
+                new_service_instructions['ProPresenter播放'] = '随敬拜团排练'
+                new_service_instructions['ProPresenter更新'] = '提前准备内容'
+                st.success("✅ 已设置为敬拜配合说明")
+                st.rerun()
+        
+        with col2:
+            if st.button("🔄 重置默认", use_container_width=True, key="reset_default_instructions"):
+                new_service_instructions = {
+                    '音控': '随敬拜团排练',
+                    '导播/摄影': '检查预设机位',
+                    'ProPresenter播放': '随敬拜团排练',
+                    'ProPresenter更新': '提前准备内容'
+                }
+                st.success("✅ 已重置为默认说明")
+                st.rerun()
+    
+    # 应用更改按钮
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💾 保存主模板", type="primary", use_container_width=True, key="save_main_template"):
+            template_config['template'] = new_template
+            template_config['detail_format'] = new_detail_format
+            template_config['default_detail'] = new_default_detail
+            template_manager.update_template('saturday_reminder', template_config)
+            st.success("✅ 主模板已保存！")
+            st.rerun()
+    
+    with col2:
+        if st.button("⏰ 保存时间配置", type="primary", use_container_width=True, key="save_time_config"):
+            template_config['service_times'] = new_service_times
+            template_manager.update_template('saturday_reminder', template_config)
+            st.success("✅ 时间配置已保存！")
+            st.rerun()
+    
+    with col3:
+        if st.button("📋 保存说明配置", type="primary", use_container_width=True, key="save_instruction_config"):
+            template_config['service_instructions'] = new_service_instructions
+            template_manager.update_template('saturday_reminder', template_config)
+            st.success("✅ 说明配置已保存！")
+            st.rerun()
+
+def show_standard_template_editor(template_manager, template_config, selected_type):
+    """显示标准模板编辑器（用于非周六模板）"""
+    # 编辑模板内容
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("#### 主模板内容")
+        current_template = template_config.get('template', '')
+        new_template = st.text_area(
+            "模板内容:",
+            value=current_template,
+            height=300,
+            help="使用 {变量名} 来插入动态内容",
+            key=f"template_{selected_type}"
+        )
+        
+        # 验证模板
+        is_valid, validation_msg = template_manager.validate_template(selected_type, new_template)
+        if is_valid:
+            st.success(f"✅ {validation_msg}")
+        else:
+            st.error(f"❌ {validation_msg}")
+    
+    with col2:
+        st.markdown("#### 可用变量")
+        variables = template_manager.get_template_variables(selected_type)
+        if variables:
+            for var, desc in variables.items():
+                st.code(f"{{{var}}}")
+                st.caption(desc)
+        else:
+            st.info("该模板暂无变量说明")
+        
+        # 模板操作
+        st.markdown("#### 操作")
+        if st.button("💾 应用更改", type="primary", use_container_width=True):
+            if is_valid:
+                template_config['template'] = new_template
+                template_manager.update_template(selected_type, template_config)
+                st.success("✅ 模板更改已应用！")
+                st.rerun()
+            else:
+                st.error("❌ 模板验证失败，无法应用更改")
 
 def show_scripture_management():
     """显示经文管理页面"""
