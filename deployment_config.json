@@ -1,0 +1,33 @@
+{
+  "deployment_time": "2025-09-13T04:23:00Z",
+  "project_id": "ai-for-god",
+  "region": "us-central1",
+  "storage_bucket": "grace-irvine-ministry-scheduler",
+  "services": {
+    "ui": {
+      "name": "grace-irvine-ui",
+      "url": "https://grace-irvine-ui-760303847302.us-central1.run.app",
+      "image": "gcr.io/ai-for-god/grace-irvine-ui",
+      "description": "Streamlit Web UI for manual management"
+    },
+    "api": {
+      "name": "grace-irvine-api",
+      "url": "https://grace-irvine-api-760303847302.us-central1.run.app",
+      "image": "gcr.io/ai-for-god/grace-irvine-api",
+      "description": "FastAPI service for automatic updates"
+    }
+  },
+  "scheduler": {
+    "job_name": "grace-irvine-ics-updater",
+    "schedule": "0 */4 * * *",
+    "description": "Every 4 hours automatic ICS update",
+    "target_url": "https://grace-irvine-api-760303847302.us-central1.run.app/api/update-ics"
+  },
+  "endpoints": {
+    "ui_web_interface": "https://grace-irvine-ui-760303847302.us-central1.run.app",
+    "api_docs": "https://grace-irvine-api-760303847302.us-central1.run.app/docs",
+    "api_health": "https://grace-irvine-api-760303847302.us-central1.run.app/health",
+    "api_status": "https://grace-irvine-api-760303847302.us-central1.run.app/api/status",
+    "manual_update": "https://grace-irvine-api-760303847302.us-central1.run.app/api/update-ics"
+  }
+}
