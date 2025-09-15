@@ -22,6 +22,7 @@ from pathlib import Path
 import json
 import io
 import logging
+from typing import List, Dict, Tuple
 
 # 添加项目根目录到Python路径
 PROJECT_ROOT = Path(__file__).parent
@@ -140,6 +141,78 @@ async def get_api_status():
     """获取系统状态"""
     status = StaticFileServer.get_calendar_status()
     return JSONResponse(content=status)
+
+@api_app.get("/api/ics/{filename}")
+async def get_ics_file_content(filename: str):
+    """获取ICS文件内容"""
+    try:
+        content, error = StaticFileServer.serve_calendar_file(filename)
+        if error:
+            raise HTTPException(status_code=404, detail=error)
+        
+        return Response(
+            content=content,
+            media_type="text/calendar; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving ICS file: {str(e)}")
+
+@api_app.get("/api/ics/{filename}/events")
+async def get_ics_events(filename: str):
+    """获取ICS文件中的事件列表（解析后的JSON格式）"""
+    try:
+        content, error = StaticFileServer.serve_calendar_file(filename)
+        if error:
+            raise HTTPException(status_code=404, detail=error)
+        
+        # 解析ICS文件中的事件
+        events = parse_ics_events(content)
+        
+        return JSONResponse(content={
+            "filename": filename,
+            "events_count": len(events),
+            "events": events,
+            "last_updated": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error parsing ICS events: {str(e)}")
+
+@api_app.get("/api/ics/{filename}/event/{event_uid}")
+async def get_ics_event_detail(filename: str, event_uid: str):
+    """获取特定事件的详细信息"""
+    try:
+        content, error = StaticFileServer.serve_calendar_file(filename)
+        if error:
+            raise HTTPException(status_code=404, detail=error)
+        
+        # 解析ICS文件中的事件
+        events = parse_ics_events(content)
+        
+        # 查找特定的事件
+        target_event = None
+        for event in events:
+            if event.get('uid') == event_uid:
+                target_event = event
+                break
+        
+        if not target_event:
+            raise HTTPException(status_code=404, detail=f"Event with UID {event_uid} not found")
+        
+        return JSONResponse(content={
+            "filename": filename,
+            "event": target_event,
+            "retrieved_at": datetime.now().isoformat()
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving event detail: {str(e)}")
 
 @api_app.post("/api/update-ics")
 async def trigger_ics_update(auth_token: str = Header(None, alias="X-Auth-Token")):
@@ -602,7 +675,7 @@ def show_calendar_management():
             show_subscription_info()
         
         if st.button("🔍 查看ICS事件内容", use_container_width=True):
-            show_ics_events_content()
+            show_ics_events_content_enhanced()
         
         if st.button("☁️ 推送到云端Bucket", type="primary", use_container_width=True):
             upload_ics_to_bucket()
@@ -830,6 +903,977 @@ def show_ics_events_content():
         except Exception as e:
             st.error(f"❌ 读取文件失败: {e}")
 
+def show_ics_events_content_enhanced():
+    """增强版ICS事件内容查看器 - 支持云端读取"""
+    st.markdown("### 🔍 增强版ICS事件内容查看器")
+    st.markdown("💡 支持从云端和本地自动读取ICS文件内容并解析事件详情")
+    
+    # 数据源选择
+    col1, col2 = st.columns(2)
+    with col1:
+        data_source = st.radio(
+            "选择数据源:",
+            ["🌐 智能读取（云端优先）", "💻 本地文件", "☁️ 仅云端"],
+            key="ics_data_source"
+        )
+    
+    with col2:
+        available_files = get_available_ics_files(data_source)
+        if not available_files:
+            st.warning("📄 未找到可用的ICS文件")
+            return
+        
+        selected_file = st.selectbox(
+            "选择ICS文件:",
+            options=available_files,
+            key="enhanced_ics_file_selector"
+        )
+    
+    if selected_file:
+        # 读取文件内容
+        content, source_info = read_ics_file_smart(selected_file, data_source)
+        
+        if not content:
+            st.error(f"❌ 无法读取文件: {selected_file}")
+            return
+        
+        # 显示数据源信息
+        st.info(f"📊 数据源: {source_info}")
+        
+        # 解析事件
+        try:
+            events = parse_ics_events(content)
+            
+            # 创建标签页
+            tab1, tab2, tab3 = st.tabs(["📅 事件列表", "📊 统计分析", "🔧 原始数据"])
+            
+            with tab1:
+                st.markdown(f"#### 📋 {selected_file} 包含的事件 ({len(events)} 个)")
+                
+                if events:
+                    # 事件筛选
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        filter_type = st.selectbox(
+                            "事件类型筛选:",
+                            ["全部", "通知事件", "服事事件", "其他事件"],
+                            key="event_filter"
+                        )
+                    
+                    with col2:
+                        sort_by = st.selectbox(
+                            "排序方式:",
+                            ["时间顺序", "标题", "类型"],
+                            key="event_sort"
+                        )
+                    
+                    with col3:
+                        view_mode = st.selectbox(
+                            "显示模式:",
+                            ["详细模式", "紧凑模式", "列表模式"],
+                            key="event_view_mode"
+                        )
+                    
+                    # 筛选和排序事件
+                    filtered_events = filter_events(events, filter_type)
+                    sorted_events = sort_events(filtered_events, sort_by)
+                    
+                    # 显示事件
+                    if view_mode == "列表模式":
+                        show_events_table(sorted_events)
+                    else:
+                        show_events_detailed(sorted_events, view_mode == "详细模式")
+                else:
+                    st.info("📄 该文件中未找到事件")
+            
+            with tab2:
+                show_events_statistics(events, content)
+            
+            with tab3:
+                show_raw_ics_content(content, selected_file)
+                
+        except Exception as e:
+            st.error(f"❌ 解析ICS文件失败: {e}")
+
+def get_available_ics_files(data_source: str) -> List[str]:
+    """获取可用的ICS文件列表"""
+    files = []
+    
+    try:
+        if "智能读取" in data_source or "云端" in data_source:
+            # 从云端获取文件列表
+            from src.cloud_storage_manager import get_storage_manager
+            storage_manager = get_storage_manager()
+            
+            if storage_manager.is_cloud_mode and storage_manager.storage_client:
+                try:
+                    prefix = storage_manager.config.calendars_path
+                    for blob in storage_manager.bucket.list_blobs(prefix=prefix):
+                        if blob.name.endswith('.ics'):
+                            filename = blob.name.replace(prefix, '')
+                            files.append(f"☁️ {filename}")
+                except Exception as e:
+                    logger.error(f"获取云端文件列表失败: {e}")
+        
+        if "智能读取" in data_source or "本地" in data_source:
+            # 从本地获取文件列表
+            calendar_dir = Path("calendars")
+            if calendar_dir.exists():
+                for file_path in calendar_dir.glob("*.ics"):
+                    filename = file_path.name
+                    if f"☁️ {filename}" not in files:  # 避免重复
+                        files.append(f"💻 {filename}")
+    
+    except Exception as e:
+        logger.error(f"获取文件列表失败: {e}")
+    
+    # 去除前缀，返回纯文件名用于显示
+    clean_files = []
+    for file in files:
+        if file.startswith("☁️ ") or file.startswith("💻 "):
+            clean_files.append(file[2:])  # 移除前缀
+        else:
+            clean_files.append(file)
+    
+    return list(set(clean_files))  # 去重
+
+def read_ics_file_smart(filename: str, data_source: str) -> tuple:
+    """智能读取ICS文件内容"""
+    content = None
+    source_info = ""
+    
+    try:
+        from src.cloud_storage_manager import get_storage_manager
+        storage_manager = get_storage_manager()
+        
+        if "智能读取" in data_source:
+            # 智能读取：云端优先
+            content = storage_manager.read_ics_calendar(filename)
+            if content:
+                source_info = "☁️ 云端存储 (智能读取)"
+            else:
+                # 回退到本地
+                local_path = Path("calendars") / filename
+                if local_path.exists():
+                    with open(local_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    source_info = "💻 本地文件 (回退)"
+        
+        elif "云端" in data_source:
+            # 仅云端
+            content = storage_manager.read_ics_calendar(filename)
+            source_info = "☁️ 云端存储" if content else "❌ 云端读取失败"
+        
+        elif "本地" in data_source:
+            # 仅本地
+            local_path = Path("calendars") / filename
+            if local_path.exists():
+                with open(local_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                source_info = "💻 本地文件"
+            else:
+                source_info = "❌ 本地文件不存在"
+    
+    except Exception as e:
+        logger.error(f"读取ICS文件失败: {e}")
+        source_info = f"❌ 读取失败: {str(e)}"
+    
+    return content, source_info
+
+def filter_events(events: List[Dict], filter_type: str) -> List[Dict]:
+    """筛选事件"""
+    if filter_type == "全部":
+        return events
+    elif filter_type == "通知事件":
+        return [e for e in events if "通知" in e.get('summary', '')]
+    elif filter_type == "服事事件":
+        return [e for e in events if "服事" in e.get('summary', '')]
+    else:  # 其他事件
+        return [e for e in events if "通知" not in e.get('summary', '') and "服事" not in e.get('summary', '')]
+
+def sort_events(events: List[Dict], sort_by: str) -> List[Dict]:
+    """排序事件"""
+    if sort_by == "标题":
+        return sorted(events, key=lambda x: x.get('summary', ''))
+    elif sort_by == "类型":
+        def get_event_type(event):
+            summary = event.get('summary', '')
+            if "通知" in summary:
+                return "1_通知"
+            elif "服事" in summary:
+                return "2_服事"
+            else:
+                return "3_其他"
+        return sorted(events, key=get_event_type)
+    else:  # 时间顺序
+        return sorted(events, key=lambda x: x.get('start_time', ''))
+
+def show_events_table(events: List[Dict]):
+    """以表格形式显示事件"""
+    if not events:
+        st.info("没有符合条件的事件")
+        return
+    
+    # 创建数据框
+    table_data = []
+    for i, event in enumerate(events, 1):
+        table_data.append({
+            '序号': i,
+            '标题': event.get('summary', 'N/A'),
+            '开始时间': event.get('start_time', 'N/A'),
+            '结束时间': event.get('end_time', 'N/A'),
+            '地点': event.get('location', 'N/A'),
+            'UID': event.get('uid', 'N/A')[:20] + '...' if event.get('uid', '') else 'N/A'
+        })
+    
+    df = pd.DataFrame(table_data)
+    st.dataframe(df, use_container_width=True)
+
+def show_events_detailed(events: List[Dict], detailed: bool = True):
+    """详细显示事件"""
+    if not events:
+        st.info("没有符合条件的事件")
+        return
+    
+    for i, event in enumerate(events, 1):
+        summary = event.get('summary', '未知事件')
+        
+        if detailed:
+            with st.expander(f"🎯 事件 {i}: {summary}", expanded=False):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**📋 基本信息**")
+                    st.text(f"标题: {event.get('summary', 'N/A')}")
+                    st.text(f"开始时间: {event.get('start_time', 'N/A')}")
+                    st.text(f"结束时间: {event.get('end_time', 'N/A')}")
+                    st.text(f"地点: {event.get('location', 'N/A')}")
+                    st.text(f"UID: {event.get('uid', 'N/A')}")
+                
+                with col2:
+                    st.markdown("**📝 事件描述**")
+                    description = event.get('description', 'N/A')
+                    st.text_area(
+                        "详细内容:",
+                        value=description,
+                        height=200,
+                        key=f"enhanced_event_desc_{i}_{event.get('uid', i)}",
+                        disabled=True
+                    )
+                
+                # 操作按钮
+                if st.button(f"📋 复制事件内容", key=f"copy_event_{i}_{event.get('uid', i)}"):
+                    event_text = f"事件: {summary}\n时间: {event.get('start_time', 'N/A')} - {event.get('end_time', 'N/A')}\n地点: {event.get('location', 'N/A')}\n描述: {description}"
+                    st.code(event_text, language=None)
+                    st.success("✅ 事件内容已显示，可复制上方文本框内容")
+        else:
+            # 紧凑模式
+            col1, col2, col3 = st.columns([3, 2, 1])
+            with col1:
+                st.markdown(f"**{i}. {summary}**")
+            with col2:
+                st.text(event.get('start_time', 'N/A'))
+            with col3:
+                if st.button("详情", key=f"detail_btn_{i}_{event.get('uid', i)}"):
+                    show_event_detail_modal(event)
+
+def show_event_detail_modal(event: Dict):
+    """显示事件详情模态框"""
+    with st.container():
+        st.markdown("---")
+        st.markdown(f"### 📋 事件详情: {event.get('summary', '未知事件')}")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**基本信息:**")
+            st.text(f"标题: {event.get('summary', 'N/A')}")
+            st.text(f"开始时间: {event.get('start_time', 'N/A')}")
+            st.text(f"结束时间: {event.get('end_time', 'N/A')}")
+            st.text(f"地点: {event.get('location', 'N/A')}")
+            st.text(f"UID: {event.get('uid', 'N/A')}")
+        
+        with col2:
+            st.markdown("**事件描述:**")
+            description = event.get('description', 'N/A')
+            st.text_area(
+                "内容:",
+                value=description,
+                height=150,
+                disabled=True
+            )
+        st.markdown("---")
+
+def show_events_statistics(events: List[Dict], content: str):
+    """显示事件统计信息"""
+    st.markdown("#### 📊 事件统计分析")
+    
+    if not events:
+        st.info("📄 无事件数据可统计")
+        return
+    
+    # 基础统计
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("📊 事件总数", len(events))
+    
+    with col2:
+        notification_events = [e for e in events if "通知" in e.get('summary', '')]
+        st.metric("📢 通知事件", len(notification_events))
+    
+    with col3:
+        service_events = [e for e in events if "服事" in e.get('summary', '')]
+        st.metric("🙏 服事事件", len(service_events))
+    
+    with col4:
+        other_events = len(events) - len(notification_events) - len(service_events)
+        st.metric("📝 其他事件", other_events)
+    
+    # 时间分布分析
+    st.markdown("#### 📅 时间分布")
+    
+    # 按月份统计
+    month_count = {}
+    for event in events:
+        start_time = event.get('start_time', '')
+        if start_time and len(start_time) >= 7:  # 至少包含年月信息
+            month_key = start_time[:7]  # YYYY-MM
+            month_count[month_key] = month_count.get(month_key, 0) + 1
+    
+    if month_count:
+        st.bar_chart(month_count)
+    else:
+        st.info("无法解析事件时间信息进行月份统计")
+    
+    # 事件类型饼图
+    st.markdown("#### 🥧 事件类型分布")
+    
+    type_count = {
+        "通知事件": len(notification_events),
+        "服事事件": len(service_events),
+        "其他事件": other_events
+    }
+    
+    # 创建简单的图表数据
+    chart_data = pd.DataFrame(
+        list(type_count.items()),
+        columns=['类型', '数量']
+    )
+    
+    if not chart_data.empty:
+        st.bar_chart(chart_data.set_index('类型'))
+    
+    # 文件信息
+    st.markdown("#### 📄 文件信息")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        file_size = len(content.encode('utf-8'))
+        st.metric("文件大小", f"{file_size / 1024:.1f} KB")
+    
+    with col2:
+        valid_ics = content.startswith('BEGIN:VCALENDAR') and content.endswith('END:VCALENDAR')
+        st.metric("ICS格式", "✅ 有效" if valid_ics else "❌ 无效")
+
+def show_raw_ics_content(content: str, filename: str):
+    """显示原始ICS内容"""
+    st.markdown(f"#### 🔧 {filename} 原始内容")
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        st.markdown("**文件信息:**")
+        st.text(f"文件大小: {len(content.encode('utf-8'))} 字节")
+        st.text(f"行数: {len(content.split('\\n'))}")
+        st.text(f"字符数: {len(content)}")
+        
+        # 验证按钮
+        if st.button("✅ 验证ICS格式", use_container_width=True):
+            is_valid = validate_ics_content(content)
+            if is_valid:
+                st.success("✅ ICS格式有效")
+            else:
+                st.error("❌ ICS格式无效")
+    
+    with col2:
+        st.markdown("**原始内容:**")
+        st.code(content, language="text")
+        
+        # 下载按钮
+        st.download_button(
+            label="💾 下载ICS文件",
+            data=content,
+            file_name=filename,
+            mime="text/calendar",
+            use_container_width=True
+        )
+
+def validate_ics_content(content: str) -> bool:
+    """验证ICS内容格式"""
+    try:
+        # 基本格式检查
+        if not content.strip():
+            return False
+        
+        lines = content.strip().split('\n')
+        
+        # 检查开始和结束标记
+        if not lines[0].strip().startswith('BEGIN:VCALENDAR'):
+            return False
+        
+        if not lines[-1].strip().startswith('END:VCALENDAR'):
+            return False
+        
+        # 检查必需的属性
+        has_version = any('VERSION:' in line for line in lines)
+        has_prodid = any('PRODID:' in line for line in lines)
+        
+        if not (has_version and has_prodid):
+            return False
+        
+        # 检查事件格式
+        event_starts = sum(1 for line in lines if line.strip() == 'BEGIN:VEVENT')
+        event_ends = sum(1 for line in lines if line.strip() == 'END:VEVENT')
+        
+        if event_starts != event_ends:
+            return False
+        
+        return True
+        
+    except Exception:
+        return False
+
+def show_reminder_settings():
+    """显示提醒设置页面"""
+    st.markdown('<div class="section-header">⏰ 提醒时间设置</div>', unsafe_allow_html=True)
+    st.markdown("配置ICS日历事件的提醒时间，包括事件发生时间和提醒提前时间")
+    
+    # 获取提醒配置管理器
+    try:
+        from src.reminder_config_manager import get_reminder_manager
+        reminder_manager = get_reminder_manager()
+    except ImportError as e:
+        st.error(f"❌ 无法加载提醒配置管理器: {e}")
+        return
+    except Exception as e:
+        st.error(f"❌ 初始化提醒配置管理器失败: {e}")
+        return
+    
+    # 显示详细的存储状态
+    storage_status = reminder_manager.get_storage_status()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if storage_status['cloud_mode']:
+            if storage_status['cloud_storage_available']:
+                st.success("☁️ 云端存储模式")
+                st.caption(f"Bucket: {storage_status['bucket_name']}")
+            else:
+                st.warning("☁️ 云端模式（连接异常）")
+        else:
+            st.info("💻 本地存储模式")
+    
+    with col2:
+        # 配置文件状态
+        if storage_status['cloud_file_exists']:
+            st.success("✅ 云端配置存在")
+            if storage_status['last_sync_time']:
+                last_sync = datetime.fromisoformat(storage_status['last_sync_time'].replace('Z', '+00:00')).strftime('%m-%d %H:%M')
+                st.caption(f"最后同步: {last_sync}")
+        else:
+            st.warning("⚠️ 云端配置缺失")
+        
+        if storage_status['local_file_exists']:
+            st.info("📁 本地备份存在")
+        else:
+            st.warning("📁 本地备份缺失")
+    
+    with col3:
+        if st.button("🔄 重新加载配置", use_container_width=True):
+            if reminder_manager.load_configs():
+                st.success("✅ 配置重新加载成功")
+                st.rerun()
+            else:
+                st.error("❌ 配置重新加载失败")
+        
+        if storage_status['cloud_mode'] and st.button("☁️ 强制云端同步", use_container_width=True):
+            if reminder_manager.force_sync_to_cloud():
+                st.success("✅ 强制同步成功")
+                st.rerun()
+            else:
+                st.error("❌ 强制同步失败")
+    
+    # 获取当前配置
+    configs = reminder_manager.get_all_configs()
+    
+    # 创建标签页
+    tab1, tab2, tab3 = st.tabs(["📝 编辑配置", "📊 配置预览", "⚙️ 高级设置"])
+    
+    with tab1:
+        st.markdown("### 📝 编辑提醒配置")
+        
+        # 选择要编辑的配置
+        config_options = {}
+        for event_type, config in configs.items():
+            config_options[f"{config.name} ({event_type})"] = event_type
+        
+        selected_key = st.selectbox(
+            "选择要编辑的提醒配置:",
+            options=list(config_options.keys()),
+            key="reminder_config_selector"
+        )
+        
+        if selected_key:
+            event_type = config_options[selected_key]
+            current_config = configs[event_type]
+            
+            # 显示当前配置的编辑界面
+            edited_config = show_config_editor(current_config, event_type)
+            
+            if edited_config:
+                # 保存按钮
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("💾 保存配置", type="primary", use_container_width=True):
+                        # 验证配置
+                        errors = reminder_manager.validate_config(edited_config)
+                        if errors:
+                            st.error(f"❌ 配置验证失败:\n" + "\n".join([f"• {error}" for error in errors]))
+                        else:
+                            if reminder_manager.update_config(event_type, edited_config):
+                                st.success("✅ 配置保存成功！")
+                                st.rerun()
+                            else:
+                                st.error("❌ 配置保存失败")
+                
+                with col2:
+                    if st.button("🔄 重置为默认", use_container_width=True):
+                        default_configs = reminder_manager.get_default_configs()
+                        if event_type in default_configs:
+                            if reminder_manager.update_config(event_type, default_configs[event_type]):
+                                st.success("✅ 已重置为默认配置")
+                                st.rerun()
+                            else:
+                                st.error("❌ 重置失败")
+                
+                with col3:
+                    if st.button("🧪 测试配置", use_container_width=True):
+                        show_config_test(edited_config)
+    
+    with tab2:
+        show_configs_preview(configs)
+    
+    with tab3:
+        show_advanced_settings(reminder_manager)
+
+def show_config_editor(config, event_type: str):
+    """显示单个配置的编辑界面"""
+    st.markdown(f"#### ⚙️ 编辑 {config.name}")
+    
+    # 基本信息
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        enabled = st.checkbox(
+            "启用此提醒",
+            value=config.enabled,
+            key=f"enabled_{event_type}"
+        )
+        
+        name = st.text_input(
+            "配置名称",
+            value=config.name,
+            key=f"name_{event_type}"
+        )
+    
+    with col2:
+        description = st.text_area(
+            "配置描述",
+            value=config.description,
+            height=100,
+            key=f"description_{event_type}"
+        )
+    
+    # 事件时间设置
+    st.markdown("#### 📅 事件时间设置")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        weekday = st.selectbox(
+            "星期几",
+            options=list(range(7)),
+            index=config.event_timing.weekday,
+            format_func=lambda x: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][x],
+            key=f"weekday_{event_type}"
+        )
+    
+    with col2:
+        hour = st.number_input(
+            "小时 (0-23)",
+            min_value=0,
+            max_value=23,
+            value=config.event_timing.hour,
+            key=f"hour_{event_type}"
+        )
+    
+    with col3:
+        minute = st.number_input(
+            "分钟 (0-59)",
+            min_value=0,
+            max_value=59,
+            value=config.event_timing.minute,
+            key=f"minute_{event_type}"
+        )
+    
+    with col4:
+        duration = st.number_input(
+            "持续时间（分钟）",
+            min_value=1,
+            max_value=480,
+            value=config.event_timing.duration_minutes,
+            key=f"duration_{event_type}"
+        )
+    
+    # 提醒时间设置
+    st.markdown("#### ⏰ 提醒时间设置")
+    st.markdown("💡 可以组合使用多个时间单位，如：提前1天2小时30分钟")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        days_before = st.number_input(
+            "提前天数",
+            min_value=0,
+            max_value=7,
+            value=config.reminder_timing.days_before,
+            key=f"days_before_{event_type}"
+        )
+    
+    with col2:
+        hours_before = st.number_input(
+            "提前小时数",
+            min_value=0,
+            max_value=23,
+            value=config.reminder_timing.hours_before,
+            key=f"hours_before_{event_type}"
+        )
+    
+    with col3:
+        minutes_before = st.number_input(
+            "提前分钟数",
+            min_value=0,
+            max_value=59,
+            value=config.reminder_timing.minutes_before,
+            key=f"minutes_before_{event_type}"
+        )
+    
+    # 创建新的配置对象
+    try:
+        from src.reminder_config_manager import NotificationConfig, EventTiming, ReminderTiming
+        
+        new_event_timing = EventTiming(
+            weekday=weekday,
+            hour=hour,
+            minute=minute,
+            duration_minutes=duration
+        )
+        
+        new_reminder_timing = ReminderTiming(
+            days_before=days_before,
+            hours_before=hours_before,
+            minutes_before=minutes_before
+        )
+        
+        new_config = NotificationConfig(
+            event_type=event_type,
+            name=name,
+            description=description,
+            event_timing=new_event_timing,
+            reminder_timing=new_reminder_timing,
+            enabled=enabled
+        )
+        
+        # 显示预览
+        show_config_preview(new_config)
+        
+        return new_config
+        
+    except Exception as e:
+        st.error(f"❌ 配置处理失败: {e}")
+        return None
+
+def show_config_preview(config):
+    """显示配置预览"""
+    st.markdown("#### 👁️ 配置预览")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**事件信息:**")
+        weekday_name = config.event_timing.get_weekday_name()
+        time_str = f"{config.event_timing.hour:02d}:{config.event_timing.minute:02d}"
+        st.text(f"时间: {weekday_name} {time_str}")
+        st.text(f"持续: {config.event_timing.duration_minutes} 分钟")
+        st.text(f"状态: {'✅ 启用' if config.enabled else '❌ 禁用'}")
+    
+    with col2:
+        st.markdown("**提醒设置:**")
+        total_minutes = (config.reminder_timing.minutes_before + 
+                        config.reminder_timing.hours_before * 60 + 
+                        config.reminder_timing.days_before * 24 * 60)
+        
+        st.text(f"提前时间: {format_reminder_time(config.reminder_timing)}")
+        st.text(f"ICS格式: {config.reminder_timing.to_ics_trigger()}")
+        st.text(f"总分钟数: {total_minutes} 分钟")
+
+def format_reminder_time(reminder_timing) -> str:
+    """格式化提醒时间显示"""
+    parts = []
+    
+    if reminder_timing.days_before > 0:
+        parts.append(f"{reminder_timing.days_before}天")
+    
+    if reminder_timing.hours_before > 0:
+        parts.append(f"{reminder_timing.hours_before}小时")
+    
+    if reminder_timing.minutes_before > 0:
+        parts.append(f"{reminder_timing.minutes_before}分钟")
+    
+    if not parts:
+        return "无提醒"
+    
+    return "".join(parts)
+
+def show_configs_preview(configs):
+    """显示所有配置的预览"""
+    st.markdown("### 📊 当前配置总览")
+    
+    # 创建配置表格
+    table_data = []
+    for event_type, config in configs.items():
+        weekday_name = config.event_timing.get_weekday_name()
+        time_str = f"{config.event_timing.hour:02d}:{config.event_timing.minute:02d}"
+        reminder_str = format_reminder_time(config.reminder_timing)
+        
+        table_data.append({
+            "配置名称": config.name,
+            "事件类型": event_type,
+            "状态": "✅ 启用" if config.enabled else "❌ 禁用",
+            "事件时间": f"{weekday_name} {time_str}",
+            "持续时间": f"{config.event_timing.duration_minutes}分钟",
+            "提醒设置": reminder_str,
+            "ICS触发器": config.reminder_timing.to_ics_trigger()
+        })
+    
+    if table_data:
+        df = pd.DataFrame(table_data)
+        st.dataframe(df, use_container_width=True)
+        
+        # 统计信息
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            enabled_count = sum(1 for config in configs.values() if config.enabled)
+            st.metric("启用配置", f"{enabled_count}/{len(configs)}")
+        
+        with col2:
+            avg_reminder_minutes = sum(
+                config.reminder_timing.minutes_before + 
+                config.reminder_timing.hours_before * 60 + 
+                config.reminder_timing.days_before * 24 * 60
+                for config in configs.values()
+            ) / len(configs) if configs else 0
+            st.metric("平均提醒时间", f"{avg_reminder_minutes:.0f}分钟")
+        
+        with col3:
+            unique_days = len(set(config.event_timing.weekday for config in configs.values()))
+            st.metric("涉及天数", f"{unique_days}天")
+    else:
+        st.info("📄 暂无配置数据")
+
+def show_config_test(config):
+    """显示配置测试结果"""
+    st.markdown("#### 🧪 配置测试")
+    
+    try:
+        from src.reminder_config_manager import get_reminder_manager
+        reminder_manager = get_reminder_manager()
+        
+        # 验证配置
+        errors = reminder_manager.validate_config(config)
+        
+        if errors:
+            st.error("❌ 配置验证失败:")
+            for error in errors:
+                st.error(f"• {error}")
+        else:
+            st.success("✅ 配置验证通过!")
+            
+            # 显示详细测试结果
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**时间计算测试:**")
+                weekday_name = config.event_timing.get_weekday_name()
+                st.text(f"事件时间: {weekday_name} {config.event_timing.hour:02d}:{config.event_timing.minute:02d}")
+                
+                # 计算下次发生时间
+                from datetime import datetime, timedelta
+                today = datetime.now().date()
+                days_ahead = config.event_timing.weekday - today.weekday()
+                if days_ahead <= 0:  # 如果今天是这一天或已过，则计算下周
+                    days_ahead += 7
+                
+                next_event_date = today + timedelta(days=days_ahead)
+                next_event_datetime = datetime.combine(
+                    next_event_date, 
+                    config.event_timing.to_time()
+                )
+                
+                st.text(f"下次事件: {next_event_datetime.strftime('%Y-%m-%d %H:%M')}")
+                
+                # 计算提醒时间
+                total_reminder_minutes = (
+                    config.reminder_timing.minutes_before + 
+                    config.reminder_timing.hours_before * 60 + 
+                    config.reminder_timing.days_before * 24 * 60
+                )
+                
+                reminder_datetime = next_event_datetime - timedelta(minutes=total_reminder_minutes)
+                st.text(f"提醒时间: {reminder_datetime.strftime('%Y-%m-%d %H:%M')}")
+            
+            with col2:
+                st.markdown("**ICS格式测试:**")
+                st.code(f"TRIGGER:{config.reminder_timing.to_ics_trigger()}", language="text")
+                
+                # 显示完整的ICS事件示例
+                sample_ics = f"""BEGIN:VEVENT
+UID:test_event@graceirvine.org
+SUMMARY:{config.name}测试
+DTSTART:{next_event_datetime.strftime('%Y%m%dT%H%M%S')}
+DTEND:{(next_event_datetime + timedelta(minutes=config.event_timing.duration_minutes)).strftime('%Y%m%dT%H%M%S')}
+DESCRIPTION:{config.description}
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:提醒：{config.name}测试
+TRIGGER:{config.reminder_timing.to_ics_trigger()}
+END:VALARM
+END:VEVENT"""
+                
+                with st.expander("📄 ICS事件示例"):
+                    st.code(sample_ics, language="text")
+    
+    except Exception as e:
+        st.error(f"❌ 测试失败: {e}")
+
+def show_advanced_settings(reminder_manager):
+    """显示高级设置"""
+    st.markdown("### ⚙️ 高级设置")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 🔄 配置管理")
+        
+        if st.button("🔄 重置所有配置", use_container_width=True):
+            if st.session_state.get('confirm_reset', False):
+                if reminder_manager.reset_to_defaults():
+                    st.success("✅ 所有配置已重置为默认值")
+                    st.rerun()
+                else:
+                    st.error("❌ 重置失败")
+                st.session_state['confirm_reset'] = False
+            else:
+                st.warning("⚠️ 再次点击确认重置所有配置")
+                st.session_state['confirm_reset'] = True
+        
+        if st.button("💾 导出配置", use_container_width=True):
+            configs = reminder_manager.get_all_configs()
+            config_json = {
+                'version': '1.0',
+                'exported_at': datetime.now().isoformat(),
+                'reminder_configs': {k: v.to_dict() for k, v in configs.items()}
+            }
+            
+            st.download_button(
+                label="📥 下载配置文件",
+                data=json.dumps(config_json, ensure_ascii=False, indent=2),
+                file_name=f"reminder_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+    
+    with col2:
+        st.markdown("#### 📊 存储信息")
+        
+        storage_status = reminder_manager.get_storage_status()
+        
+        st.markdown("**存储状态详情:**")
+        
+        # 存储模式
+        mode_text = "云端模式" if storage_status['cloud_mode'] else "本地模式"
+        availability_text = "可用" if storage_status['cloud_storage_available'] else "不可用"
+        st.text(f"存储模式: {mode_text}")
+        st.text(f"云端存储: {availability_text}")
+        
+        if storage_status['bucket_name']:
+            st.text(f"Bucket: {storage_status['bucket_name']}")
+        
+        # 文件状态
+        st.text(f"云端配置文件: {'✅ 存在' if storage_status['cloud_file_exists'] else '❌ 不存在'}")
+        st.text(f"本地配置文件: {'✅ 存在' if storage_status['local_file_exists'] else '❌ 不存在'}")
+        
+        if storage_status['last_sync_time']:
+            last_sync = datetime.fromisoformat(storage_status['last_sync_time'].replace('Z', '+00:00'))
+            st.text(f"最后同步时间: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # 同步状态判断
+        if storage_status['cloud_mode']:
+            if storage_status['cloud_file_exists'] and storage_status['local_file_exists']:
+                st.success("✅ 配置已同步")
+            elif storage_status['cloud_file_exists']:
+                st.info("ℹ️ 仅云端存在")
+            elif storage_status['local_file_exists']:
+                st.warning("⚠️ 需要同步到云端")
+            else:
+                st.error("❌ 配置缺失")
+        else:
+            if storage_status['local_file_exists']:
+                st.success("✅ 本地配置存在")
+            else:
+                st.error("❌ 本地配置缺失")
+    
+    # 配置文件上传
+    st.markdown("#### 📤 导入配置")
+    uploaded_file = st.file_uploader(
+        "选择配置文件",
+        type=['json'],
+        key="config_upload"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            config_data = json.load(uploaded_file)
+            
+            # 验证配置格式
+            if 'reminder_configs' in config_data:
+                st.success("✅ 配置文件格式正确")
+                
+                if st.button("📥 导入配置", type="primary"):
+                    # 这里可以添加导入逻辑
+                    st.info("💡 导入功能开发中...")
+            else:
+                st.error("❌ 配置文件格式不正确")
+                
+        except json.JSONDecodeError:
+            st.error("❌ 无法解析JSON文件")
+        except Exception as e:
+            st.error(f"❌ 处理文件失败: {e}")
+
 def parse_ics_events(ics_content: str) -> list:
     """解析ICS文件中的事件"""
     events = []
@@ -994,6 +2038,7 @@ def main():
             "🛠️ 模板编辑器", 
             "📖 经文管理",
             "📅 日历管理",
+            "⏰ 提醒设置",
             "⚙️ 系统设置"
         ]
         
@@ -1030,6 +2075,9 @@ def main():
     
     elif page == "📅 日历管理":
         show_calendar_management()
+    
+    elif page == "⏰ 提醒设置":
+        show_reminder_settings()
     
     elif page == "⚙️ 系统设置":
         show_system_settings()
