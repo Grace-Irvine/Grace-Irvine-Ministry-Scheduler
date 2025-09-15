@@ -49,8 +49,34 @@ def escape_ics_text(text: str) -> str:
     text = text.replace('\n', '\\n')
     return text
 
+def calculate_event_date(sunday_date: date, target_weekday: int) -> date:
+    """计算事件日期（相对于主日）
+    
+    Args:
+        sunday_date: 主日日期
+        target_weekday: 目标星期几 (0=Monday, 6=Sunday)
+    
+    Returns:
+        计算出的事件日期
+    """
+    # 周日 = 6, 周一 = 0, 周二 = 1, ..., 周六 = 5
+    sunday_weekday = 6  # 周日的weekday值
+    
+    if target_weekday == sunday_weekday:
+        # 如果目标是周日，直接返回
+        return sunday_date
+    else:
+        # 计算相对于周日的天数偏移
+        # 周一到周六都是在周日之前
+        days_offset = target_weekday - sunday_weekday
+        if days_offset > 0:
+            days_offset -= 7  # 向前一周
+        
+        return sunday_date + timedelta(days=days_offset)
+
 def create_ics_event(uid: str, summary: str, description: str, 
-                    start_dt: datetime, end_dt: datetime, location: str = "") -> str:
+                    start_dt: datetime, end_dt: datetime, location: str = "", 
+                    reminder_trigger: str = "-PT30M") -> str:
     """创建单个ICS事件"""
     start_str = start_dt.strftime('%Y%m%dT%H%M%S')
     end_str = end_dt.strftime('%Y%m%dT%H%M%S')
@@ -68,7 +94,7 @@ def create_ics_event(uid: str, summary: str, description: str,
         "BEGIN:VALARM",
         "ACTION:DISPLAY",
         f"DESCRIPTION:提醒：{escape_ics_text(summary)}",
-        "TRIGGER:-PT30M",
+        f"TRIGGER:{reminder_trigger}",
         "END:VALARM",
         "END:VEVENT"
     ]
@@ -96,6 +122,17 @@ def generate_coordinator_calendar():
         # 使用动态模板管理器
         dynamic_template_manager = get_template_manager()
         
+        # 获取提醒配置管理器
+        try:
+            from .reminder_config_manager import get_reminder_manager
+            reminder_manager = get_reminder_manager()
+            reminder_configs = reminder_manager.get_all_configs()
+            print(f"📋 加载了 {len(reminder_configs)} 个提醒配置")
+        except Exception as e:
+            print(f"⚠️ 无法加载提醒配置，使用默认设置: {e}")
+            reminder_configs = {}
+            reminder_manager = None
+        
         # 创建ICS内容
         ics_lines = [
             "BEGIN:VCALENDAR",
@@ -115,42 +152,106 @@ def generate_coordinator_calendar():
         
         for schedule in future_schedules:
             # 周三确认通知事件
-            wednesday = schedule.date - timedelta(days=4)
-            if wednesday >= today - timedelta(days=7):
-                try:
-                    # 使用与前端一致的模板生成逻辑
-                    notification_content = generate_unified_wednesday_template(schedule.date, schedule)
-                    event_ics = create_ics_event(
-                        uid=f"weekly_confirmation_{wednesday.strftime('%Y%m%d')}@graceirvine.org",
-                        summary=f"发送周末确认通知 ({schedule.date.month}/{schedule.date.day})",
-                        description=f"发送内容：\n\n{notification_content}",
-                        start_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=0)),
-                        end_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=30)),
-                        location="Grace Irvine 教会"
-                    )
-                    ics_lines.append(event_ics)
-                    events_created += 1
-                except Exception as e:
-                    print(f"❌ 创建周三事件失败: {e}")
+            if 'weekly_confirmation' in reminder_configs and reminder_configs['weekly_confirmation'].enabled:
+                config = reminder_configs['weekly_confirmation']
+                # 计算事件日期（相对于主日）
+                event_date = calculate_event_date(schedule.date, config.event_timing.weekday)
+                
+                if event_date >= today - timedelta(days=7):
+                    try:
+                        # 使用与前端一致的模板生成逻辑
+                        notification_content = generate_unified_wednesday_template(schedule.date, schedule)
+                        
+                        # 使用配置的时间
+                        start_dt = datetime.combine(
+                            event_date, 
+                            config.event_timing.to_time()
+                        )
+                        end_dt = start_dt + timedelta(minutes=config.event_timing.duration_minutes)
+                        
+                        event_ics = create_ics_event(
+                            uid=f"weekly_confirmation_{event_date.strftime('%Y%m%d')}@graceirvine.org",
+                            summary=f"发送周末确认通知 ({schedule.date.month}/{schedule.date.day})",
+                            description=f"发送内容：\n\n{notification_content}",
+                            start_dt=start_dt,
+                            end_dt=end_dt,
+                            location="Grace Irvine 教会",
+                            reminder_trigger=config.reminder_timing.to_ics_trigger()
+                        )
+                        ics_lines.append(event_ics)
+                        events_created += 1
+                    except Exception as e:
+                        print(f"❌ 创建周三事件失败: {e}")
+            else:
+                # 使用默认设置（保持向后兼容）
+                wednesday = schedule.date - timedelta(days=4)
+                if wednesday >= today - timedelta(days=7):
+                    try:
+                        notification_content = generate_unified_wednesday_template(schedule.date, schedule)
+                        event_ics = create_ics_event(
+                            uid=f"weekly_confirmation_{wednesday.strftime('%Y%m%d')}@graceirvine.org",
+                            summary=f"发送周末确认通知 ({schedule.date.month}/{schedule.date.day})",
+                            description=f"发送内容：\n\n{notification_content}",
+                            start_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=0)),
+                            end_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=30)),
+                            location="Grace Irvine 教会",
+                            reminder_trigger="-PT30M"
+                        )
+                        ics_lines.append(event_ics)
+                        events_created += 1
+                    except Exception as e:
+                        print(f"❌ 创建周三事件失败: {e}")
             
             # 周六提醒通知事件
-            saturday = schedule.date - timedelta(days=1)
-            if saturday >= today - timedelta(days=7):
-                try:
-                    # 使用与前端一致的模板生成逻辑
-                    notification_content = generate_unified_saturday_template(schedule.date, schedule)
-                    event_ics = create_ics_event(
-                        uid=f"sunday_reminder_{saturday.strftime('%Y%m%d')}@graceirvine.org",
-                        summary=f"发送主日提醒通知 ({schedule.date.month}/{schedule.date.day})",
-                        description=f"发送内容：\n\n{notification_content}",
-                        start_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=0)),
-                        end_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=30)),
-                        location="Grace Irvine 教会"
-                    )
-                    ics_lines.append(event_ics)
-                    events_created += 1
-                except Exception as e:
-                    print(f"❌ 创建周六事件失败: {e}")
+            if 'saturday_reminder' in reminder_configs and reminder_configs['saturday_reminder'].enabled:
+                config = reminder_configs['saturday_reminder']
+                # 计算事件日期（相对于主日）
+                event_date = calculate_event_date(schedule.date, config.event_timing.weekday)
+                
+                if event_date >= today - timedelta(days=7):
+                    try:
+                        # 使用与前端一致的模板生成逻辑
+                        notification_content = generate_unified_saturday_template(schedule.date, schedule)
+                        
+                        # 使用配置的时间
+                        start_dt = datetime.combine(
+                            event_date, 
+                            config.event_timing.to_time()
+                        )
+                        end_dt = start_dt + timedelta(minutes=config.event_timing.duration_minutes)
+                        
+                        event_ics = create_ics_event(
+                            uid=f"sunday_reminder_{event_date.strftime('%Y%m%d')}@graceirvine.org",
+                            summary=f"发送主日提醒通知 ({schedule.date.month}/{schedule.date.day})",
+                            description=f"发送内容：\n\n{notification_content}",
+                            start_dt=start_dt,
+                            end_dt=end_dt,
+                            location="Grace Irvine 教会",
+                            reminder_trigger=config.reminder_timing.to_ics_trigger()
+                        )
+                        ics_lines.append(event_ics)
+                        events_created += 1
+                    except Exception as e:
+                        print(f"❌ 创建周六事件失败: {e}")
+            else:
+                # 使用默认设置（保持向后兼容）
+                saturday = schedule.date - timedelta(days=1)
+                if saturday >= today - timedelta(days=7):
+                    try:
+                        notification_content = generate_unified_saturday_template(schedule.date, schedule)
+                        event_ics = create_ics_event(
+                            uid=f"sunday_reminder_{saturday.strftime('%Y%m%d')}@graceirvine.org",
+                            summary=f"发送主日提醒通知 ({schedule.date.month}/{schedule.date.day})",
+                            description=f"发送内容：\n\n{notification_content}",
+                            start_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=0)),
+                            end_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=30)),
+                            location="Grace Irvine 教会",
+                            reminder_trigger="-PT30M"
+                        )
+                        ics_lines.append(event_ics)
+                        events_created += 1
+                    except Exception as e:
+                        print(f"❌ 创建周六事件失败: {e}")
         
         ics_lines.append("END:VCALENDAR")
         ics_content = "\n".join(ics_lines)
