@@ -48,5 +48,5 @@ EXPOSE 8080 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/_stcore/health || exit 1
 
-# 启动命令 - 运行服务启动脚本
-CMD ["python3", "run_services.py"]
+# 启动命令 - 运行统一启动脚本
+CMD ["python3", "start.py", "--skip-checks"]

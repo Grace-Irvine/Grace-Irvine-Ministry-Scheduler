@@ -1285,7 +1285,8 @@ def show_raw_ics_content(content: str, filename: str):
     with col1:
         st.markdown("**文件信息:**")
         st.text(f"文件大小: {len(content.encode('utf-8'))} 字节")
-        st.text(f"行数: {len(content.split('\\n'))}")
+        newline = '\n'
+        st.text(f"行数: {len(content.split(newline))}")
         st.text(f"字符数: {len(content)}")
         
         # 验证按钮
