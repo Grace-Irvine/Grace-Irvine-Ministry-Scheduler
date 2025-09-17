@@ -13,3 +13,12 @@ columns:
       service_type: "ProPresenter播放"
     - key: "U"
       service_type: "ProPresenter更新"
+
+# 云端存储配置
+storage:
+  # Bucket中的文件夹路径配置
+  templates_path: "templates/"
+  calendars_path: "calendars/"
+  data_cache_path: "data/cache/"
+  backups_path: "backups/"
+  logs_path: "logs/"

@@ -1,0 +1,20 @@
+{
+  "service_name": "grace-irvine-scheduler",
+  "image": "gcr.io/ai-for-god/grace-irvine-scheduler",
+  "region": "us-central1",
+  "environment_variables": {
+    "GCP_STORAGE_BUCKET": "grace-irvine-ministry-scheduler",
+    "GOOGLE_CLOUD_PROJECT": "ai-for-god",
+    "STORAGE_MODE": "cloud",
+    "PORT": "8080"
+  },
+  "resource_limits": {
+    "memory": "1Gi",
+    "cpu": "1"
+  },
+  "scaling": {
+    "max_instances": 10,
+    "concurrency": 80
+  },
+  "deployment_command": "gcloud run deploy grace-irvine-scheduler \\\n    --image=gcr.io/ai-for-god/grace-irvine-scheduler \\\n    --platform=managed \\\n    --region=us-central1 \\\n    --allow-unauthenticated \\\n    --memory=1Gi \\\n    --cpu=1 \\\n    --timeout=3600 \\\n    --concurrency=80 \\\n    --max-instances=10 \\\n    --set-env-vars=GCP_STORAGE_BUCKET=grace-irvine-ministry-scheduler,GOOGLE_CLOUD_PROJECT=ai-for-god,STORAGE_MODE=cloud,PORT=8080"
+}
