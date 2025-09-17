@@ -70,9 +70,6 @@ class GoogleSheetsExtractor:
     def _setup_client(self):
         """初始化 Google Sheets 客户端"""
         try:
-            if not Path(self.service_account_path).exists():
-                raise FileNotFoundError(f"Service account file not found: {self.service_account_path}")
-            
             # 设置认证范围
             scopes = [
                 'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -80,10 +77,18 @@ class GoogleSheetsExtractor:
             ]
             
             # 创建认证凭据
-            credentials = Credentials.from_service_account_file(
-                self.service_account_path, 
-                scopes=scopes
-            )
+            if self.service_account_path and Path(self.service_account_path).exists():
+                # 使用服务账号文件
+                credentials = Credentials.from_service_account_file(
+                    self.service_account_path, 
+                    scopes=scopes
+                )
+                logger.info(f"Using service account file: {self.service_account_path}")
+            else:
+                # 在云环境中使用默认凭据
+                from google.auth import default
+                credentials, project = default(scopes=scopes)
+                logger.info(f"Using default credentials in cloud environment, project: {project}")
             
             # 初始化客户端
             self.client = gspread.authorize(credentials)

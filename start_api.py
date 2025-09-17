@@ -90,78 +90,24 @@ async def update_ics_calendar(auth: bool = Depends(verify_auth_token)):
     try:
         logger.info("开始更新ICS日历文件...")
         
-        # 初始化数据提取器
-        import yaml
-        config_path = "configs/config.yaml"
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        spreadsheet_id = config['spreadsheet_id']
-        extractor = GoogleSheetsExtractor(spreadsheet_id=spreadsheet_id)
+        # 直接使用generate_coordinator_calendar函数，它会自己处理数据获取
+        logger.info("生成负责人日历...")
         
-        # 获取排程数据
-        logger.info("提取Google Sheets数据...")
-        assignments = await asyncio.to_thread(extractor.extract_ministry_assignments)
+        # 在异步上下文中运行日历生成
+        success = await asyncio.to_thread(generate_coordinator_calendar)
         
-        if not assignments:
-            logger.warning("未找到排程数据")
-            return {"status": "warning", "message": "No assignments found"}
-        
-        # 生成日历
-        logger.info(f"生成日历，共 {len(assignments)} 条排程...")
-        
-        # 生成ICS内容
-        ics_content = generate_coordinator_calendar(assignments)
-        
-        # 确保日历目录存在
-        calendar_dir = Path("calendars")
-        calendar_dir.mkdir(exist_ok=True)
-        
-        # 保存ICS文件
-        calendar_file = calendar_dir / "grace_irvine_coordinator.ics"
-        with open(calendar_file, 'w', encoding='utf-8') as f:
-            f.write(ics_content)
-        
-        logger.info(f"ICS日历文件已更新: {calendar_file}")
-        
-        # 如果是云存储模式，上传到GCS
-        storage_mode = os.getenv("STORAGE_MODE", "local")
-        if storage_mode == "cloud":
-            try:
-                from src.cloud_storage_manager import CloudStorageManager
-                storage_manager = CloudStorageManager()
-                
-                # 上传ICS文件
-                gcs_path = await asyncio.to_thread(
-                    storage_manager.upload_file,
-                    str(calendar_file),
-                    f"calendars/{calendar_file.name}"
-                )
-                logger.info(f"ICS文件已上传到GCS: {gcs_path}")
-                
-                return {
-                    "status": "success",
-                    "message": "ICS calendar updated successfully",
-                    "assignments_count": len(assignments),
-                    "local_file": str(calendar_file),
-                    "gcs_path": gcs_path,
-                    "timestamp": datetime.now().isoformat()
-                }
-            except Exception as e:
-                logger.error(f"上传到GCS失败: {e}")
-                return {
-                    "status": "partial_success",
-                    "message": "ICS calendar updated locally but GCS upload failed",
-                    "assignments_count": len(assignments),
-                    "local_file": str(calendar_file),
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat()
-                }
-        else:
+        if success:
+            logger.info("ICS日历生成成功")
             return {
                 "status": "success",
                 "message": "ICS calendar updated successfully",
-                "assignments_count": len(assignments),
-                "local_file": str(calendar_file),
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            logger.error("ICS日历生成失败")
+            return {
+                "status": "error",
+                "message": "Failed to generate ICS calendar",
                 "timestamp": datetime.now().isoformat()
             }
             

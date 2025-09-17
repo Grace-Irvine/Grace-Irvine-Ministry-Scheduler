@@ -827,6 +827,539 @@ export STORAGE_MODE=cloud
         st.markdown("2. 验证GCP权限配置")
         st.markdown("3. 确认Bucket是否存在")
 
+def show_ics_viewer_page():
+    """单独的ICS查看器页面"""
+    st.markdown('<div class="section-header">🔍 ICS日历查看器</div>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    ### 📖 功能说明
+    这是一个专用的ICS日历文件查看器，支持：
+    - 🌐 智能数据源选择（云端/本地）
+    - 📅 事件详细信息查看
+    - 📊 统计分析和筛选
+    - 🔧 原始数据查看
+    - 📱 响应式设计
+    """)
+    
+    st.markdown("---")
+    
+    # 数据源选择区域
+    st.markdown("#### 🎯 数据源选择")
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        data_source = st.radio(
+            "选择数据源:",
+            ["🌐 智能读取（本地优先）", "💻 仅本地文件", "☁️ 仅云端"],
+            key="ics_viewer_data_source",
+            help="智能读取会自动选择最佳数据源"
+        )
+    
+    with col2:
+        # 文件选择
+        available_files = get_available_ics_files(data_source)
+        if not available_files:
+            if "云端" in data_source:
+                st.warning("📄 云端未找到可用的ICS文件")
+                
+                # 检查云端存储状态
+                from src.cloud_storage_manager import get_storage_manager
+                storage_manager = get_storage_manager()
+                
+                if not storage_manager.is_cloud_mode:
+                    st.info("💡 **云端模式未启用**")
+                    st.markdown("- 当前运行在本地模式下")
+                    st.markdown("- 建议选择 **🌐 智能读取** 或 **💻 仅本地文件**")
+                elif not storage_manager.storage_client:
+                    st.error("❌ **云端存储不可用**")
+                    st.markdown("- GCP 认证未配置")
+                    st.markdown("- 请检查认证凭据或在云端环境中运行")
+                    st.markdown("- 建议选择 **💻 仅本地文件**")
+                else:
+                    st.info("☁️ **云端存储可用但文件为空**")
+                    st.markdown("- 可能需要先从本地上传文件到云端")
+                    st.markdown("- 请在 **📅 日历管理** 页面生成并上传文件")
+                    
+                    if st.button("🔄 尝试从本地上传到云端", type="primary"):
+                        with st.spinner("正在上传..."):
+                            try:
+                                local_file = Path("calendars/grace_irvine_coordinator.ics")
+                                if local_file.exists():
+                                    with open(local_file, 'r', encoding='utf-8') as f:
+                                        content = f.read()
+                                    success = storage_manager.write_ics_calendar(content, "grace_irvine_coordinator.ics")
+                                    if success:
+                                        st.success("✅ 上传成功！")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ 上传失败")
+                                else:
+                                    st.error("❌ 本地文件不存在，请先生成日历文件")
+                            except Exception as e:
+                                st.error(f"❌ 上传过程出错: {e}")
+            else:
+                st.warning("📄 未找到可用的ICS文件")
+                st.info("💡 请先在 **📅 日历管理** 页面生成日历文件")
+            return
+        
+        selected_file = st.selectbox(
+            "选择要查看的ICS文件:",
+            options=available_files,
+            key="ics_viewer_file_selector",
+            help="选择要查看的日历文件"
+        )
+    
+    if not selected_file:
+        return
+    
+    st.markdown("---")
+    
+    # 文件内容读取和显示
+    with st.spinner(f"正在读取文件: {selected_file}..."):
+        content, source_info = read_ics_file_smart(selected_file, data_source)
+    
+    if not content:
+        st.error(f"❌ 无法读取文件: {selected_file}")
+        st.markdown("**可能的原因：**")
+        st.markdown("- 文件不存在或已损坏")
+        st.markdown("- 云端存储连接问题")
+        st.markdown("- 文件权限问题")
+        
+        # 提供故障排除选项
+        if st.button("🔧 尝试重新生成文件", type="primary"):
+            with st.spinner("正在重新生成日历文件..."):
+                success, message = generate_calendar_files()
+                if success:
+                    st.success(f"✅ {message}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {message}")
+        return
+    
+    # 显示数据源信息
+    st.success(f"✅ 文件读取成功 | 📊 数据源: {source_info}")
+    
+    # 解析事件
+    try:
+        events = parse_ics_events(content)
+        
+        if not events:
+            st.warning("📄 文件中没有找到有效的事件")
+            return
+        
+        # 创建主要的标签页
+        tab1, tab2, tab3, tab4 = st.tabs(["📅 事件列表", "📊 统计分析", "🔧 原始数据", "⚙️ 工具"])
+        
+        with tab1:
+            show_events_list_tab(events, selected_file)
+        
+        with tab2:
+            show_statistics_tab(events, selected_file)
+        
+        with tab3:
+            show_raw_data_tab(content, selected_file)
+        
+        with tab4:
+            show_tools_tab(content, selected_file, source_info)
+            
+    except Exception as e:
+        st.error(f"❌ 解析ICS文件时出错: {e}")
+        st.markdown("**可能的原因：**")
+        st.markdown("- ICS文件格式不正确")
+        st.markdown("- 文件内容损坏")
+        st.markdown("- 编码问题")
+
+def show_events_list_tab(events, filename):
+    """显示事件列表标签页"""
+    st.markdown(f"#### 📋 {filename} 包含的事件 ({len(events)} 个)")
+    
+    if not events:
+        st.info("📭 没有找到事件")
+        return
+    
+    # 事件筛选和排序控制
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        filter_type = st.selectbox(
+            "事件类型筛选:",
+            ["全部", "通知事件", "服事事件", "其他事件"],
+            key="event_filter_viewer"
+        )
+    
+    with col2:
+        sort_by = st.selectbox(
+            "排序方式:",
+            ["时间顺序", "标题", "类型"],
+            key="event_sort_viewer"
+        )
+    
+    with col3:
+        view_mode = st.selectbox(
+            "显示模式:",
+            ["详细模式", "紧凑模式", "列表模式"],
+            key="event_view_mode_viewer"
+        )
+    
+    # 筛选和排序事件
+    filtered_events = filter_events(events, filter_type)
+    sorted_events = sort_events(filtered_events, sort_by)
+    
+    if not filtered_events:
+        st.info(f"📭 没有找到符合条件的事件 ({filter_type})")
+        return
+    
+    st.markdown(f"**筛选结果:** {len(filtered_events)} 个事件")
+    
+    # 显示事件
+    for i, event in enumerate(sorted_events, 1):
+        if view_mode == "详细模式":
+            show_event_detailed(event, i)
+        elif view_mode == "紧凑模式":
+            show_event_compact(event, i)
+        else:  # 列表模式
+            show_event_list(event, i)
+
+def show_event_detailed(event, index):
+    """详细模式显示事件"""
+    with st.expander(f"🗓️ {index}. {event.get('summary', '未知事件')}", expanded=index <= 3):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**📅 时间信息**")
+            if event.get('start_time'):
+                st.text(f"开始: {event['start_time']}")
+            if event.get('end_time'):
+                st.text(f"结束: {event['end_time']}")
+            
+            if event.get('location'):
+                st.markdown("**📍 位置**")
+                st.text(event['location'])
+        
+        with col2:
+            if event.get('description'):
+                st.markdown("**📝 描述**")
+                st.text_area(
+                    "事件描述", 
+                    value=event['description'], 
+                    height=100,
+                    disabled=True,
+                    key=f"desc_{event.get('uid', index)}"
+                )
+        
+        if event.get('uid'):
+            st.code(f"UID: {event['uid']}", language="text")
+
+def show_event_compact(event, index):
+    """紧凑模式显示事件"""
+    col1, col2, col3 = st.columns([3, 2, 1])
+    
+    with col1:
+        st.markdown(f"**{index}. {event.get('summary', '未知事件')}**")
+        if event.get('description'):
+            desc = event['description'][:100] + "..." if len(event['description']) > 100 else event['description']
+            st.text(desc)
+    
+    with col2:
+        if event.get('start_time'):
+            st.text(f"⏰ {event['start_time']}")
+        if event.get('location'):
+            st.text(f"📍 {event['location']}")
+    
+    with col3:
+        if st.button("详情", key=f"detail_{index}"):
+            st.session_state[f"show_detail_{index}"] = not st.session_state.get(f"show_detail_{index}", False)
+    
+    # 如果点击了详情按钮，显示完整信息
+    if st.session_state.get(f"show_detail_{index}", False):
+        with st.container():
+            if event.get('description'):
+                st.text_area("完整描述", value=event['description'], height=150, disabled=True, key=f"full_desc_{index}")
+
+def show_event_list(event, index):
+    """列表模式显示事件"""
+    cols = st.columns([1, 3, 2, 2])
+    
+    with cols[0]:
+        st.text(str(index))
+    
+    with cols[1]:
+        st.text(event.get('summary', '未知事件'))
+    
+    with cols[2]:
+        st.text(event.get('start_time', '未知时间'))
+    
+    with cols[3]:
+        st.text(event.get('location', '未知位置'))
+
+def show_statistics_tab(events, filename):
+    """显示统计分析标签页"""
+    st.markdown(f"#### 📊 {filename} 统计分析")
+    
+    # 基本统计
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("总事件数", len(events))
+    
+    with col2:
+        notification_events = len([e for e in events if "通知" in e.get('summary', '')])
+        st.metric("通知事件", notification_events)
+    
+    with col3:
+        service_events = len([e for e in events if any(word in e.get('summary', '') for word in ["服事", "敬拜", "主日"])])
+        st.metric("服事事件", service_events)
+    
+    with col4:
+        other_events = len(events) - notification_events - service_events
+        st.metric("其他事件", other_events)
+    
+    st.markdown("---")
+    
+    # 事件类型分布图表
+    if events:
+        try:
+            import pandas as pd
+            
+            # 准备数据
+            event_types = []
+            for event in events:
+                summary = event.get('summary', '')
+                if "通知" in summary:
+                    event_types.append("通知事件")
+                elif any(word in summary for word in ["服事", "敬拜", "主日"]):
+                    event_types.append("服事事件")
+                else:
+                    event_types.append("其他事件")
+            
+            df = pd.DataFrame({'类型': event_types})
+            type_counts = df['类型'].value_counts()
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**📈 事件类型分布**")
+                st.bar_chart(type_counts)
+            
+            with col2:
+                st.markdown("**📋 详细统计**")
+                for event_type, count in type_counts.items():
+                    percentage = (count / len(events)) * 100
+                    st.text(f"{event_type}: {count} 个 ({percentage:.1f}%)")
+                
+        except ImportError:
+            st.info("📊 需要安装pandas来显示图表")
+    
+    # 时间分布分析
+    st.markdown("---")
+    st.markdown("**⏰ 时间分布分析**")
+    
+    time_slots = {}
+    for event in events:
+        start_time = event.get('start_time', '')
+        if start_time:
+            try:
+                # 提取小时
+                if 'T' in start_time:
+                    time_part = start_time.split('T')[1][:2]
+                    hour = int(time_part)
+                    
+                    if 6 <= hour < 12:
+                        slot = "上午 (6-12)"
+                    elif 12 <= hour < 18:
+                        slot = "下午 (12-18)"
+                    elif 18 <= hour < 24:
+                        slot = "晚上 (18-24)"
+                    else:
+                        slot = "深夜/凌晨 (0-6)"
+                    
+                    time_slots[slot] = time_slots.get(slot, 0) + 1
+            except:
+                pass
+    
+    if time_slots:
+        for slot, count in time_slots.items():
+            st.text(f"{slot}: {count} 个事件")
+
+def show_raw_data_tab(content, filename):
+    """显示原始数据标签页"""
+    st.markdown(f"#### 🔧 {filename} 原始ICS内容")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        st.markdown("**📄 文件信息**")
+        lines = content.split('\n')
+        st.text(f"总行数: {len(lines)}")
+        st.text(f"文件大小: {len(content.encode('utf-8'))} 字节")
+    
+    with col2:
+        if st.button("📋 复制内容", use_container_width=True):
+            st.success("内容已复制到剪贴板！")
+        
+        if st.button("💾 下载文件", use_container_width=True):
+            st.download_button(
+                label="下载ICS文件",
+                data=content,
+                file_name=filename,
+                mime="text/calendar"
+            )
+    
+    st.markdown("---")
+    
+    # 显示原始内容，添加行号
+    st.markdown("**📝 原始内容（带行号）**")
+    
+    # 分页显示，避免内容过长
+    lines_per_page = 50
+    total_lines = len(content.split('\n'))
+    total_pages = (total_lines + lines_per_page - 1) // lines_per_page
+    
+    if total_pages > 1:
+        page = st.selectbox(f"选择页面 (每页{lines_per_page}行)", range(1, total_pages + 1))
+        start_line = (page - 1) * lines_per_page
+        end_line = min(start_line + lines_per_page, total_lines)
+        
+        lines = content.split('\n')[start_line:end_line]
+        numbered_content = '\n'.join([f"{start_line + i + 1:3d}| {line}" for i, line in enumerate(lines)])
+        
+        st.code(numbered_content, language="text")
+        st.text(f"显示第 {start_line + 1}-{end_line} 行 (共 {total_lines} 行)")
+    else:
+        lines = content.split('\n')
+        numbered_content = '\n'.join([f"{i + 1:3d}| {line}" for i, line in enumerate(lines)])
+        st.code(numbered_content, language="text")
+
+def show_tools_tab(content, filename, source_info):
+    """显示工具标签页"""
+    st.markdown(f"#### ⚙️ {filename} 工具箱")
+    
+    # 文件信息
+    st.markdown("**📊 文件详情**")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.info(f"**文件名:** {filename}")
+        st.info(f"**数据源:** {source_info}")
+    
+    with col2:
+        file_size = len(content.encode('utf-8'))
+        st.info(f"**文件大小:** {file_size:,} 字节")
+        st.info(f"**行数:** {len(content.split('\n'))}")
+    
+    with col3:
+        events = parse_ics_events(content)
+        st.info(f"**事件数量:** {len(events)}")
+        st.info(f"**文件格式:** ICS/iCalendar")
+    
+    st.markdown("---")
+    
+    # 操作工具
+    st.markdown("**🔧 操作工具**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**📤 导出工具**")
+        
+        if st.button("📋 复制到剪贴板", use_container_width=True):
+            st.code(content[:200] + "..." if len(content) > 200 else content)
+            st.success("✅ 内容已显示，请手动复制")
+        
+        if st.button("💾 下载ICS文件", use_container_width=True):
+            st.download_button(
+                label="⬇️ 下载文件",
+                data=content,
+                file_name=filename,
+                mime="text/calendar",
+                use_container_width=True
+            )
+    
+    with col2:
+        st.markdown("**🔄 刷新工具**")
+        
+        if st.button("🔃 重新读取文件", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+        
+        if st.button("🔄 重新生成文件", use_container_width=True):
+            with st.spinner("正在重新生成ICS文件..."):
+                success, message = generate_calendar_files()
+                if success:
+                    st.success(f"✅ {message}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {message}")
+    
+    st.markdown("---")
+    
+    # 验证工具
+    st.markdown("**✅ 验证工具**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔍 验证ICS格式", use_container_width=True):
+            validation_result = validate_ics_format(content)
+            if validation_result['valid']:
+                st.success("✅ ICS格式有效")
+                st.info(f"📊 找到 {validation_result['event_count']} 个事件")
+            else:
+                st.error(f"❌ ICS格式无效: {validation_result['error']}")
+    
+    with col2:
+        if st.button("📊 生成报告", use_container_width=True):
+            generate_ics_report(content, filename, events)
+
+def validate_ics_format(content):
+    """验证ICS文件格式"""
+    try:
+        if not content.strip().startswith('BEGIN:VCALENDAR'):
+            return {'valid': False, 'error': '缺少VCALENDAR开始标记'}
+        
+        if not content.strip().endswith('END:VCALENDAR'):
+            return {'valid': False, 'error': '缺少VCALENDAR结束标记'}
+        
+        events = parse_ics_events(content)
+        
+        return {
+            'valid': True, 
+            'event_count': len(events),
+            'message': 'ICS格式验证通过'
+        }
+    except Exception as e:
+        return {'valid': False, 'error': str(e)}
+
+def generate_ics_report(content, filename, events):
+    """生成ICS文件报告"""
+    st.markdown("### 📋 ICS文件分析报告")
+    
+    # 基本信息
+    st.markdown("#### 📊 基本信息")
+    st.text(f"文件名: {filename}")
+    st.text(f"文件大小: {len(content.encode('utf-8'))} 字节")
+    st.text(f"总行数: {len(content.split('\n'))}")
+    st.text(f"事件数量: {len(events)}")
+    
+    # 事件统计
+    if events:
+        st.markdown("#### 📅 事件统计")
+        
+        # 按类型统计
+        notification_count = len([e for e in events if "通知" in e.get('summary', '')])
+        service_count = len([e for e in events if any(word in e.get('summary', '') for word in ["服事", "敬拜", "主日"])])
+        other_count = len(events) - notification_count - service_count
+        
+        st.text(f"通知事件: {notification_count}")
+        st.text(f"服事事件: {service_count}")
+        st.text(f"其他事件: {other_count}")
+        
+        # 时间范围
+        start_times = [e.get('start_time') for e in events if e.get('start_time')]
+        if start_times:
+            st.text(f"时间范围: {min(start_times)} 到 {max(start_times)}")
+    
+    st.success("✅ 报告生成完成")
+
 def show_ics_events_content():
     """显示ICS事件内容"""
     st.markdown("### 🔍 ICS事件内容查看器")
@@ -998,6 +1531,7 @@ def show_ics_events_content_enhanced():
 def get_available_ics_files(data_source: str) -> List[str]:
     """获取可用的ICS文件列表"""
     files = []
+    cloud_available = False
     
     try:
         if "智能读取" in data_source or "云端" in data_source:
@@ -1012,8 +1546,12 @@ def get_available_ics_files(data_source: str) -> List[str]:
                         if blob.name.endswith('.ics'):
                             filename = blob.name.replace(prefix, '')
                             files.append(f"☁️ {filename}")
+                    cloud_available = True
+                    logger.info(f"云端文件列表获取成功: {len([f for f in files if f.startswith('☁️')])} 个文件")
                 except Exception as e:
                     logger.error(f"获取云端文件列表失败: {e}")
+            else:
+                logger.warning(f"云端存储不可用: is_cloud_mode={storage_manager.is_cloud_mode}, storage_client={'是' if storage_manager.storage_client else '否'}")
         
         if "智能读取" in data_source or "本地" in data_source:
             # 从本地获取文件列表
@@ -1023,9 +1561,15 @@ def get_available_ics_files(data_source: str) -> List[str]:
                     filename = file_path.name
                     if f"☁️ {filename}" not in files:  # 避免重复
                         files.append(f"💻 {filename}")
+                logger.info(f"本地文件列表获取成功: {len([f for f in files if f.startswith('💻')])} 个文件")
     
     except Exception as e:
         logger.error(f"获取文件列表失败: {e}")
+    
+    # 如果是仅云端模式但云端不可用，返回空列表并记录警告
+    if "仅云端" in data_source and not cloud_available:
+        logger.warning("仅云端模式但云端存储不可用，无法获取文件列表")
+        return []
     
     # 去除前缀，返回纯文件名用于显示
     clean_files = []
@@ -1047,30 +1591,51 @@ def read_ics_file_smart(filename: str, data_source: str) -> tuple:
         storage_manager = get_storage_manager()
         
         if "智能读取" in data_source:
-            # 智能读取：云端优先
-            content = storage_manager.read_ics_calendar(filename)
-            if content:
-                source_info = "☁️ 云端存储 (智能读取)"
-            else:
-                # 回退到本地
-                local_path = Path("calendars") / filename
-                if local_path.exists():
+            # 智能读取：先尝试本地，再尝试云端
+            local_path = Path("calendars") / filename
+            if local_path.exists():
+                try:
                     with open(local_path, 'r', encoding='utf-8') as f:
                         content = f.read()
-                    source_info = "💻 本地文件 (回退)"
+                    source_info = "💻 本地文件 (智能读取)"
+                    logger.info(f"从本地文件读取ICS成功: {filename}")
+                except Exception as e:
+                    logger.error(f"本地文件读取失败: {e}")
+            
+            # 如果本地读取失败，尝试云端
+            if not content:
+                try:
+                    cloud_content = storage_manager.read_ics_calendar(filename)
+                    if cloud_content:
+                        content = cloud_content
+                        source_info = "☁️ 云端存储 (智能读取)"
+                        logger.info(f"从云端读取ICS成功: {filename}")
+                except Exception as e:
+                    logger.error(f"云端读取失败: {e}")
         
         elif "云端" in data_source:
             # 仅云端
-            content = storage_manager.read_ics_calendar(filename)
-            source_info = "☁️ 云端存储" if content else "❌ 云端读取失败"
+            try:
+                content = storage_manager.read_ics_calendar(filename)
+                source_info = "☁️ 云端存储" if content else "❌ 云端文件不存在"
+                if content:
+                    logger.info(f"从云端读取ICS成功: {filename}")
+            except Exception as e:
+                logger.error(f"云端读取失败: {e}")
+                source_info = f"❌ 云端读取失败: {str(e)}"
         
         elif "本地" in data_source:
             # 仅本地
             local_path = Path("calendars") / filename
             if local_path.exists():
-                with open(local_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                source_info = "💻 本地文件"
+                try:
+                    with open(local_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    source_info = "💻 本地文件"
+                    logger.info(f"从本地文件读取ICS成功: {filename}")
+                except Exception as e:
+                    logger.error(f"本地文件读取失败: {e}")
+                    source_info = f"❌ 本地文件读取失败: {str(e)}"
             else:
                 source_info = "❌ 本地文件不存在"
     
@@ -2039,6 +2604,7 @@ def main():
             "🛠️ 模板编辑器", 
             "📖 经文管理",
             "📅 日历管理",
+            "🔍 ICS查看器",
             "⏰ 提醒设置",
             "⚙️ 系统设置"
         ]
@@ -2076,6 +2642,9 @@ def main():
     
     elif page == "📅 日历管理":
         show_calendar_management()
+    
+    elif page == "🔍 ICS查看器":
+        show_ics_viewer_page()
     
     elif page == "⏰ 提醒设置":
         show_reminder_settings()
