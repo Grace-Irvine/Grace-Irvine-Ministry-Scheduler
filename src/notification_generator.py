@@ -56,7 +56,7 @@ def main():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             with open(f"weekly_notification_{timestamp}.txt", "w", encoding="utf-8") as f:
                 f.write(weekly_msg)
-            print(f"\n💾 已保存到: weekly_notification_{timestamp}.txt")
+            print(f"{chr(10)}💾 已保存到: weekly_notification_{timestamp}.txt")
         
         if command == "sunday" or command == "all":
             print("\n🔔 【周六提醒通知】")
@@ -68,7 +68,7 @@ def main():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             with open(f"sunday_reminder_{timestamp}.txt", "w", encoding="utf-8") as f:
                 f.write(sunday_msg)
-            print(f"\n💾 已保存到: sunday_reminder_{timestamp}.txt")
+            print(f"{chr(10)}💾 已保存到: sunday_reminder_{timestamp}.txt")
         
         if command == "monthly" or command == "all":
             print("\n📊 【月度总览通知】")
@@ -80,7 +80,7 @@ def main():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             with open(f"monthly_overview_{timestamp}.txt", "w", encoding="utf-8") as f:
                 f.write(monthly_msg)
-            print(f"\n💾 已保存到: monthly_overview_{timestamp}.txt")
+            print(f"{chr(10)}💾 已保存到: monthly_overview_{timestamp}.txt")
         
         if command not in ["weekly", "sunday", "monthly", "all"]:
             print(f"❌ 未知命令: {command}")

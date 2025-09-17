@@ -406,7 +406,7 @@ class FocusedDataCleaner:
             # 7. 查找下周主日
             next_sunday_schedule = self.find_next_sunday_schedule(schedules)
             if next_sunday_schedule:
-                print(f"\n📅 下周主日 ({next_sunday_schedule.date.strftime('%Y-%m-%d')}) 安排:")
+                print(f"{chr(10)}📅 下周主日 ({next_sunday_schedule.date.strftime('%Y-%m-%d')}) 安排:")
                 assignments = next_sunday_schedule.get_all_assignments()
                 if assignments:
                     for role, person in assignments.items():
@@ -419,7 +419,7 @@ class FocusedDataCleaner:
                 if days_until_sunday == 0:
                     days_until_sunday = 7
                 next_sunday = today + timedelta(days=days_until_sunday)
-                print(f"\n⚠️  未找到下周主日 ({next_sunday.strftime('%Y-%m-%d')}) 的安排")
+                print(f"{chr(10)}⚠️  未找到下周主日 ({next_sunday.strftime('%Y-%m-%d')}) 的安排")
             
             print("\n🎉 数据处理完成！")
             print("=" * 50)
@@ -435,7 +435,7 @@ class FocusedDataCleaner:
             }
             
         except Exception as e:
-            print(f"\n❌ 处理失败: {e}")
+            print(f"{chr(10)}❌ 处理失败: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -461,14 +461,14 @@ def main():
             print("  2. 检查处理报告")
             print("  3. 使用清洗后的数据生成通知模板")
         else:
-            print(f"\n❌ 处理失败: {result['error']}")
+            print(f"{chr(10)}❌ 处理失败: {result['error']}")
             return 1
             
     except KeyboardInterrupt:
         print("\n👋 用户中断操作")
         return 0
     except Exception as e:
-        print(f"\n💥 意外错误: {e}")
+        print(f"{chr(10)}💥 意外错误: {e}")
         return 1
     
     return 0

@@ -510,5 +510,5 @@ def test_dynamic_templates():
 
 if __name__ == "__main__":
     success = test_dynamic_templates()
-    print(f"\n{'✅ 测试通过' if success else '❌ 测试失败'}")
+    print(f"{chr(10)}{'✅ 测试通过' if success else '❌ 测试失败'}")
     sys.exit(0 if success else 1)

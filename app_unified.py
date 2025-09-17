@@ -1244,7 +1244,8 @@ def show_tools_tab(content, filename, source_info):
     with col2:
         file_size = len(content.encode('utf-8'))
         st.info(f"**文件大小:** {file_size:,} 字节")
-        st.info(f"**行数:** {len(content.split('\n'))}")
+        newline = '\n'
+        st.info(f"**行数:** {len(content.split(newline))}")
     
     with col3:
         events = parse_ics_events(content)
@@ -1337,7 +1338,8 @@ def generate_ics_report(content, filename, events):
     st.markdown("#### 📊 基本信息")
     st.text(f"文件名: {filename}")
     st.text(f"文件大小: {len(content.encode('utf-8'))} 字节")
-    st.text(f"总行数: {len(content.split('\n'))}")
+    newline = '\n'
+    st.text(f"总行数: {len(content.split(newline))}")
     st.text(f"事件数量: {len(events)}")
     
     # 事件统计
@@ -1728,7 +1730,8 @@ def show_events_detailed(events: List[Dict], detailed: bool = True):
                 
                 # 操作按钮
                 if st.button(f"📋 复制事件内容", key=f"copy_event_{i}_{event.get('uid', i)}"):
-                    event_text = f"事件: {summary}\n时间: {event.get('start_time', 'N/A')} - {event.get('end_time', 'N/A')}\n地点: {event.get('location', 'N/A')}\n描述: {description}"
+                    newline = '\n'
+                    event_text = f"事件: {summary}{newline}时间: {event.get('start_time', 'N/A')} - {event.get('end_time', 'N/A')}{newline}地点: {event.get('location', 'N/A')}{newline}描述: {description}"
                     st.code(event_text, language=None)
                     st.success("✅ 事件内容已显示，可复制上方文本框内容")
         else:
@@ -2007,7 +2010,9 @@ def show_reminder_settings():
                         # 验证配置
                         errors = reminder_manager.validate_config(edited_config)
                         if errors:
-                            st.error(f"❌ 配置验证失败:\n" + "\n".join([f"• {error}" for error in errors]))
+                            newline = '\n'
+                            error_list = newline.join([f"• {error}" for error in errors])
+                            st.error(f"❌ 配置验证失败:{newline}{error_list}")
                         else:
                             if reminder_manager.update_config(event_type, edited_config):
                                 st.success("✅ 配置保存成功！")

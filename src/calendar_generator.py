@@ -172,7 +172,7 @@ def generate_coordinator_calendar():
                         event_ics = create_ics_event(
                             uid=f"weekly_confirmation_{event_date.strftime('%Y%m%d')}@graceirvine.org",
                             summary=f"发送周末确认通知 ({schedule.date.month}/{schedule.date.day})",
-                            description=f"发送内容：\n\n{notification_content}",
+                            description=f"发送内容：{chr(10)}{chr(10)}{notification_content}",
                             start_dt=start_dt,
                             end_dt=end_dt,
                             location="Grace Irvine 教会",
@@ -191,7 +191,7 @@ def generate_coordinator_calendar():
                         event_ics = create_ics_event(
                             uid=f"weekly_confirmation_{wednesday.strftime('%Y%m%d')}@graceirvine.org",
                             summary=f"发送周末确认通知 ({schedule.date.month}/{schedule.date.day})",
-                            description=f"发送内容：\n\n{notification_content}",
+                            description=f"发送内容：{chr(10)}{chr(10)}{notification_content}",
                             start_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=0)),
                             end_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=30)),
                             location="Grace Irvine 教会",
@@ -223,7 +223,7 @@ def generate_coordinator_calendar():
                         event_ics = create_ics_event(
                             uid=f"sunday_reminder_{event_date.strftime('%Y%m%d')}@graceirvine.org",
                             summary=f"发送主日提醒通知 ({schedule.date.month}/{schedule.date.day})",
-                            description=f"发送内容：\n\n{notification_content}",
+                            description=f"发送内容：{chr(10)}{chr(10)}{notification_content}",
                             start_dt=start_dt,
                             end_dt=end_dt,
                             location="Grace Irvine 教会",
@@ -242,7 +242,7 @@ def generate_coordinator_calendar():
                         event_ics = create_ics_event(
                             uid=f"sunday_reminder_{saturday.strftime('%Y%m%d')}@graceirvine.org",
                             summary=f"发送主日提醒通知 ({schedule.date.month}/{schedule.date.day})",
-                            description=f"发送内容：\n\n{notification_content}",
+                            description=f"发送内容：{chr(10)}{chr(10)}{notification_content}",
                             start_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=0)),
                             end_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=30)),
                             location="Grace Irvine 教会",
