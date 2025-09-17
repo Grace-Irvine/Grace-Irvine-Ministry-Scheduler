@@ -63,10 +63,42 @@ class CloudStorageManager:
         bucket_name = os.getenv('GCP_STORAGE_BUCKET', 'grace-irvine-ministry-scheduler')
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'ai-for-god')
         
+        # 尝试从配置文件加载路径配置
+        config_data = self._load_config_from_file()
+        
         return StorageConfig(
             bucket_name=bucket_name,
-            project_id=project_id
+            project_id=project_id,
+            templates_path=config_data.get('storage', {}).get('templates_path', 'templates/'),
+            calendars_path=config_data.get('storage', {}).get('calendars_path', 'calendars/'),
+            data_cache_path=config_data.get('storage', {}).get('data_cache_path', 'data/cache/'),
+            backups_path=config_data.get('storage', {}).get('backups_path', 'backups/'),
+            logs_path=config_data.get('storage', {}).get('logs_path', 'logs/')
         )
+    
+    def _load_config_from_file(self) -> Dict[str, Any]:
+        """从配置文件加载配置"""
+        config_paths = [
+            Path(__file__).parent.parent / "configs" / "config.yaml",
+            Path(__file__).parent.parent / "configs" / "cloud_deployment.json",
+            Path(__file__).parent.parent / "deployment_config.json"
+        ]
+        
+        for config_path in config_paths:
+            try:
+                if config_path.exists():
+                    if config_path.suffix == '.yaml' or config_path.suffix == '.yml':
+                        import yaml
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            return yaml.safe_load(f) or {}
+                    elif config_path.suffix == '.json':
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            return json.load(f) or {}
+            except Exception as e:
+                logger.warning(f"无法加载配置文件 {config_path}: {e}")
+                continue
+        
+        return {}
     
     def _detect_cloud_environment(self) -> bool:
         """检测是否在云端环境"""
@@ -458,6 +490,33 @@ class CloudStorageManager:
     def write_ics_calendar(self, calendar_content: str, calendar_name: str = "grace_irvine_coordinator.ics") -> bool:
         """写入ICS日历文件"""
         return self.write_file(f"calendars/{calendar_name}", calendar_content)
+    
+    def list_ics_calendars(self) -> List[str]:
+        """列出所有可用的ICS日历文件"""
+        calendar_files = []
+        
+        # 添加云端文件
+        if self.is_cloud_mode and self.storage_client:
+            try:
+                prefix = self.config.calendars_path
+                for blob in self.bucket.list_blobs(prefix=prefix):
+                    if blob.name.endswith('.ics'):
+                        filename = blob.name.replace(prefix, '').strip()
+                        if filename:
+                            calendar_files.append(filename)
+                logger.info(f"从云端获取到 {len(calendar_files)} 个ICS文件")
+            except Exception as e:
+                logger.error(f"列出云端ICS文件失败: {e}")
+        
+        # 添加本地文件（去重）
+        local_calendar_dir = self.local_root / "calendars"
+        if local_calendar_dir.exists():
+            for file_path in local_calendar_dir.glob("*.ics"):
+                filename = file_path.name
+                if filename not in calendar_files:
+                    calendar_files.append(filename)
+        
+        return sorted(calendar_files)
     
     def get_public_calendar_url(self, calendar_name: str = "grace_irvine_coordinator.ics") -> str:
         """获取公开的日历订阅URL"""
