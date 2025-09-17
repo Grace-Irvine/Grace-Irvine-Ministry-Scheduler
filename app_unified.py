@@ -282,8 +282,8 @@ async def automatic_ics_update():
                 "message": "No schedule data found in Google Sheets"
             }
         
-        # 2. 从Bucket读取最新模板
-        logger.info("Step 2: Loading templates from cloud storage")
+        # 2. 从Bucket读取最新模板和配置
+        logger.info("Step 2: Loading templates and configs from cloud storage")
         from src.cloud_storage_manager import get_storage_manager
         storage_manager = get_storage_manager()
         
@@ -294,6 +294,16 @@ async def automatic_ics_update():
             local_template_path = Path("templates/dynamic_templates.json")
             with open(local_template_path, 'w', encoding='utf-8') as f:
                 json.dump(template_content, f, ensure_ascii=False, indent=2)
+            logger.info("Dynamic templates synced from cloud storage")
+        
+        # 确保使用最新的云端提醒配置
+        reminder_config_content = storage_manager.read_file("configs/reminder_settings.json", "json")
+        if reminder_config_content:
+            # 更新本地提醒配置缓存
+            local_reminder_path = Path("configs/reminder_settings.json")
+            with open(local_reminder_path, 'w', encoding='utf-8') as f:
+                json.dump(reminder_config_content, f, ensure_ascii=False, indent=2)
+            logger.info("Reminder configurations synced from cloud storage")
         
         # 3. 生成新的ICS文件
         logger.info("Step 3: Generating ICS calendar files")
@@ -914,16 +924,12 @@ def show_ics_viewer_page():
     
     st.markdown("---")
     
-    # 清理文件名（去除前缀符号）
-    clean_filename = selected_file
-    if selected_file.startswith("☁️ "):
-        clean_filename = selected_file.replace("☁️ ", "", 1).strip()
-    elif selected_file.startswith("💻 "):
-        clean_filename = selected_file.replace("💻 ", "", 1).strip()
+    # 文件名处理现在在read_ics_file_smart中进行
+    # 直接传递包含标识的文件名
     
     # 文件内容读取和显示
-    with st.spinner(f"正在读取文件: {clean_filename}..."):
-        content, source_info = read_ics_file_smart(clean_filename, data_source)
+    with st.spinner(f"正在读取文件: {selected_file}..."):
+        content, source_info = read_ics_file_smart(selected_file, data_source)
     
     if not content:
         st.error(f"❌ 无法读取文件: {selected_file}")
@@ -1472,15 +1478,11 @@ def show_ics_events_content_enhanced():
         )
     
     if selected_file:
-        # 清理文件名（去除前缀符号）
-        clean_filename = selected_file
-        if selected_file.startswith("☁️ "):
-            clean_filename = selected_file.replace("☁️ ", "", 1).strip()
-        elif selected_file.startswith("💻 "):
-            clean_filename = selected_file.replace("💻 ", "", 1).strip()
+        # 文件名处理现在在read_ics_file_smart中进行
+        # 直接传递包含标识的文件名到智能读取函数
         
         # 读取文件内容
-        content, source_info = read_ics_file_smart(clean_filename, data_source)
+        content, source_info = read_ics_file_smart(selected_file, data_source)
         
         if not content:
             st.error(f"❌ 无法读取文件: {selected_file}")
@@ -1547,110 +1549,174 @@ def show_ics_events_content_enhanced():
 def get_available_ics_files(data_source: str) -> List[str]:
     """获取可用的ICS文件列表"""
     files = []
-    cloud_available = False
+    cloud_files = []
+    local_files = []
     
     try:
+        from src.cloud_storage_manager import get_storage_manager
+        storage_manager = get_storage_manager()
+        
         if "智能读取" in data_source or "云端" in data_source:
-            # 从云端获取文件列表
-            from src.cloud_storage_manager import get_storage_manager
-            storage_manager = get_storage_manager()
-            
-            if storage_manager.is_cloud_mode and storage_manager.storage_client:
-                try:
+            # 使用新的list_ics_calendars方法获取云端文件
+            try:
+                if storage_manager.is_cloud_mode and storage_manager.storage_client:
                     prefix = storage_manager.config.calendars_path
                     for blob in storage_manager.bucket.list_blobs(prefix=prefix):
                         if blob.name.endswith('.ics'):
-                            # 确保正确处理文件名，去除前缀和多余的空格/字符
                             filename = blob.name.replace(prefix, '').strip()
-                            if filename:  # 确保文件名不为空
-                                files.append(f"☁️ {filename}")
-                    cloud_available = True
-                    logger.info(f"云端文件列表获取成功: {len([f for f in files if f.startswith('☁️')])} 个文件")
-                except Exception as e:
-                    logger.error(f"获取云端文件列表失败: {e}")
-            else:
-                logger.warning(f"云端存储不可用: is_cloud_mode={storage_manager.is_cloud_mode}, storage_client={'是' if storage_manager.storage_client else '否'}")
+                            if filename:
+                                cloud_files.append(filename)
+                    logger.info(f"云端文件列表获取成功: {len(cloud_files)} 个文件")
+                else:
+                    logger.warning(f"云端存储不可用: is_cloud_mode={storage_manager.is_cloud_mode}, storage_client={'是' if storage_manager.storage_client else '否'}")
+            except Exception as e:
+                logger.error(f"获取云端文件列表失败: {e}")
         
         if "智能读取" in data_source or "本地" in data_source:
             # 从本地获取文件列表
             calendar_dir = Path("calendars")
             if calendar_dir.exists():
                 for file_path in calendar_dir.glob("*.ics"):
-                    filename = file_path.name
-                    if f"☁️ {filename}" not in files:  # 避免重复
-                        files.append(f"💻 {filename}")
-                logger.info(f"本地文件列表获取成功: {len([f for f in files if f.startswith('💻')])} 个文件")
+                    local_files.append(file_path.name)
+                logger.info(f"本地文件列表获取成功: {len(local_files)} 个文件")
+        
+        # 合并文件列表并添加标识
+        for filename in cloud_files:
+            files.append(f"☁️ {filename}")
+        
+        for filename in local_files:
+            if filename not in cloud_files:  # 避免重复
+                files.append(f"💻 {filename}")
+        
+        # 如果是智能读取且同一文件在云端和本地都存在，优先显示云端版本
+        if "智能读取" in data_source:
+            # 重新整理文件列表，云端优先
+            final_files = []
+            processed_names = set()
+            
+            # 先添加云端文件
+            for file in files:
+                if file.startswith("☁️ "):
+                    filename = file[2:]
+                    final_files.append(file)
+                    processed_names.add(filename)
+            
+            # 再添加本地独有文件
+            for file in files:
+                if file.startswith("💻 "):
+                    filename = file[2:]
+                    if filename not in processed_names:
+                        final_files.append(file)
+            
+            files = final_files
     
     except Exception as e:
         logger.error(f"获取文件列表失败: {e}")
     
-    # 如果是仅云端模式但云端不可用，返回空列表并记录警告
-    if "仅云端" in data_source and not cloud_available:
-        logger.warning("仅云端模式但云端存储不可用，无法获取文件列表")
+    # 如果是仅云端模式但没有云端文件，返回空列表
+    if "仅云端" in data_source and not cloud_files:
+        logger.warning("仅云端模式但未找到云端文件")
         return []
     
-    # 去除前缀，返回纯文件名用于显示
-    clean_files = []
-    for file in files:
-        if file.startswith("☁️ ") or file.startswith("💻 "):
-            clean_files.append(file[2:])  # 移除前缀
-        else:
-            clean_files.append(file)
-    
-    return list(set(clean_files))  # 去重
+    # 返回带标识的文件名，用于显示数据源
+    return files
 
 def read_ics_file_smart(filename: str, data_source: str) -> tuple:
     """智能读取ICS文件内容"""
     content = None
     source_info = ""
     
+    # 清理文件名（移除标识前缀）
+    clean_filename = filename
+    force_cloud = False
+    force_local = False
+    
+    if filename.startswith("☁️ "):
+        clean_filename = filename[2:].strip()  # 去除前导空格
+        force_cloud = True
+    elif filename.startswith("💻 "):
+        clean_filename = filename[2:].strip()  # 去除前导空格
+        force_local = True
+    
     try:
         from src.cloud_storage_manager import get_storage_manager
         storage_manager = get_storage_manager()
         
         if "智能读取" in data_source:
-            # 智能读取：先尝试本地，再尝试云端
-            local_path = Path("calendars") / filename
-            if local_path.exists():
+            # 智能读取：根据文件标识决定优先级
+            if force_cloud:
+                # 强制云端
                 try:
-                    with open(local_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    source_info = "💻 本地文件 (智能读取)"
-                    logger.info(f"从本地文件读取ICS成功: {filename}")
+                    cloud_content = storage_manager.read_ics_calendar(clean_filename)
+                    if cloud_content:
+                        content = cloud_content
+                        source_info = "☁️ 云端存储 (强制云端)"
+                        logger.info(f"从云端读取ICS成功: {clean_filename}")
+                    else:
+                        source_info = "❌ 云端文件不存在"
                 except Exception as e:
-                    logger.error(f"本地文件读取失败: {e}")
-            
-            # 如果本地读取失败，尝试云端
-            if not content:
+                    logger.error(f"云端读取失败: {e}")
+                    source_info = f"❌ 云端读取失败: {str(e)}"
+            elif force_local:
+                # 强制本地
+                local_path = Path("calendars") / clean_filename
+                if local_path.exists():
+                    try:
+                        with open(local_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        source_info = "💻 本地文件 (强制本地)"
+                        logger.info(f"从本地文件读取ICS成功: {clean_filename}")
+                    except Exception as e:
+                        logger.error(f"本地文件读取失败: {e}")
+                        source_info = f"❌ 本地文件读取失败: {str(e)}"
+                else:
+                    source_info = "❌ 本地文件不存在"
+            else:
+                # 智能读取：云端优先
                 try:
-                    cloud_content = storage_manager.read_ics_calendar(filename)
+                    cloud_content = storage_manager.read_ics_calendar(clean_filename)
                     if cloud_content:
                         content = cloud_content
                         source_info = "☁️ 云端存储 (智能读取)"
-                        logger.info(f"从云端读取ICS成功: {filename}")
+                        logger.info(f"从云端读取ICS成功: {clean_filename}")
                 except Exception as e:
                     logger.error(f"云端读取失败: {e}")
+                
+                # 如果云端读取失败，尝试本地
+                if not content:
+                    local_path = Path("calendars") / clean_filename
+                    if local_path.exists():
+                        try:
+                            with open(local_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            source_info = "💻 本地文件 (智能读取)"
+                            logger.info(f"从本地文件读取ICS成功: {clean_filename}")
+                        except Exception as e:
+                            logger.error(f"本地文件读取失败: {e}")
+                            source_info = f"❌ 本地文件读取失败: {str(e)}"
+                    else:
+                        source_info = source_info or "❌ 文件不存在"
         
         elif "云端" in data_source:
             # 仅云端
             try:
-                content = storage_manager.read_ics_calendar(filename)
+                content = storage_manager.read_ics_calendar(clean_filename)
                 source_info = "☁️ 云端存储" if content else "❌ 云端文件不存在"
                 if content:
-                    logger.info(f"从云端读取ICS成功: {filename}")
+                    logger.info(f"从云端读取ICS成功: {clean_filename}")
             except Exception as e:
                 logger.error(f"云端读取失败: {e}")
                 source_info = f"❌ 云端读取失败: {str(e)}"
         
         elif "本地" in data_source:
             # 仅本地
-            local_path = Path("calendars") / filename
+            local_path = Path("calendars") / clean_filename
             if local_path.exists():
                 try:
                     with open(local_path, 'r', encoding='utf-8') as f:
                         content = f.read()
                     source_info = "💻 本地文件"
-                    logger.info(f"从本地文件读取ICS成功: {filename}")
+                    logger.info(f"从本地文件读取ICS成功: {clean_filename}")
                 except Exception as e:
                     logger.error(f"本地文件读取失败: {e}")
                     source_info = f"❌ 本地文件读取失败: {str(e)}"
