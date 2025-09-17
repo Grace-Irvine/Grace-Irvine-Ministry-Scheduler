@@ -9,22 +9,14 @@ import yaml
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
-from dataclasses import dataclass
 from datetime import date
+
+# 导入统一数据模型
+from .models import MinistryAssignment, ServiceRole
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-@dataclass
-class MinistryAssignment:
-    """事工安排数据结构（用于类型提示）"""
-    date: date
-    audio_tech: str = ""
-    screen_operator: str = ""
-    camera_operator: str = ""
-    propresenter: str = ""
-    video_editor: str = "靖铮"
 
 class NotificationTemplateManager:
     """通知模板管理器"""

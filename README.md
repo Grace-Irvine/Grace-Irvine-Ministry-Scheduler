@@ -1,298 +1,167 @@
-# Grace Irvine Ministry Scheduler
+# Grace Irvine Ministry Scheduler v2.0 - 简化版
 
-# 恩典尔湾长老教会事工排班管理系统
+恩典尔湾长老教会事工排程管理系统 - 简化架构版本
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)](https://streamlit.io/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## 🚀 快速开始
 
-一个简洁高效的教会事工排班管理系统，专为恩典尔湾长老教会设计。
+### 1. 安装依赖
+```bash
+pip install -r requirements.txt
+```
 
-## 🎯 主要功能
+### 2. 配置环境变量
+创建 `.env` 文件：
+```bash
+# Google Sheets配置
+GOOGLE_SPREADSHEET_ID=your_spreadsheet_id_here
 
-- **📊 数据管理**: 从 Google Sheets 自动提取和清洗排班数据
-- **📝 通知生成**: 自动生成微信群通知模板（周三确认、周六提醒、月度总览）
-- **📧 邮件通知**: 支持自动发送HTML格式的邮件通知给服事同工
-- **🛠️ 模板管理**: 可视化的Web界面编辑和管理通知模板
-- **🔍 数据分析**: 实时数据质量监控和统计分析
-- **📅 排程预览**: 查看近期排班安排，智能识别冲突和空缺
-- **📥 数据导出**: 支持 Excel 和 CSV 格式导出
+# 邮件配置（可选）
+SENDER_EMAIL=your_email@example.com
+EMAIL_PASSWORD=your_app_password
+```
+
+### 3. 启动应用
+```bash
+# 使用默认设置启动
+python start.py
+
+# 或指定端口
+python start.py --port 8080
+```
+
+## 📋 主要功能
+
+### ✅ 已实现的功能
+- ✅ **数据获取**: 从Google Sheets读取排班数据
+- ✅ **数据清洗**: 自动清理和验证数据
+- ✅ **模板生成**: 生成微信群通知模板
+  - 周三确认通知
+  - 周六提醒通知  
+  - 月度总览通知
+- ✅ **邮件发送**: 发送通知模板到邮箱
+- ✅ **ICS日历**: 生成可订阅的日历文件
+- ✅ **自动更新**: 每4小时自动从Google Sheets更新ICS（GCP Cloud Scheduler）
+- ✅ **Web界面**: 直观的管理界面
+- ✅ **云端部署**: 支持Google Cloud Run部署
+
+### 🔧 架构改进
+- ✅ **统一入口点**: 只需运行 `python start.py`
+- ✅ **简化部署**: 单一应用，易于维护
+- ✅ **内置服务**: 集成静态文件服务
+- ✅ **清晰结构**: 删除重复代码
+
+## 🌐 Web界面功能
+
+访问 `http://localhost:8501` 使用以下功能：
+
+### 📊 数据概览
+- 查看排程数据统计
+- 显示近期排程安排
+- 数据质量监控
+
+### 📝 模板生成器
+- 生成三种通知模板
+- 保存模板到文件
+- 发送模板到邮箱
+
+### 📅 日历管理
+- 生成ICS日历文件
+- 查看日历状态
+- 获取订阅链接
+
+### ⚙️ 系统设置
+- 查看配置信息
+- 清除缓存
+- 文件状态监控
+
+## 📅 ICS日历订阅
+
+生成的日历文件：
+- `grace_irvine_coordinator.ics` - 负责人日历（包含通知提醒）
+- ~~`grace_irvine_workers.ics`~~ - 同工日历（留到下阶段开发）
+
+### 订阅方法：
+1. **Google Calendar**: 左侧"+" → "从URL添加" → 粘贴链接
+2. **Apple Calendar**: "文件" → "新建日历订阅" → 输入URL  
+3. **Outlook**: "添加日历" → "从Internet订阅" → 输入URL
+
+## 🔧 开发和部署
+
+### 本地开发
+```bash
+# 启动开发环境
+python3 start.py
+
+# 启动时跳过环境检查
+python3 start.py --skip-checks
+
+# 手动生成ICS日历文件
+python3 generate_calendars.py
+```
+
+### Docker部署
+```bash
+# 构建镜像
+docker build -t grace-scheduler .
+
+# 运行容器
+docker run -p 8080:8080 grace-scheduler
+```
+
+### Google Cloud Run部署
+```bash
+# 部署到Cloud Run
+python deploy_to_cloud_run.py
+
+# 设置自动更新（每4小时）
+./cloud_scheduler_setup.sh
+```
+
+详细说明请参考 [自动更新设置指南](docs/AUTO_UPDATE_SETUP.md)
 
 ## 📁 项目结构
 
 ```
 Grace-Irvine-Ministry-Scheduler/
-├── src/                      # 核心模块
-│   ├── data_cleaner.py      # 数据清洗模块
-│   ├── scheduler.py         # 排班调度模块
-│   ├── notification_generator.py  # 通知生成模块
-│   ├── email_sender.py      # 邮件发送模块
-│   ├── template_manager.py  # 模板管理模块
-│   └── data_validator.py    # 数据验证模块
-├── scripts/                  # 执行脚本
-│   ├── run_streamlit.py     # Web应用启动脚本
-│   ├── run_notifications.sh # 通知生成脚本(Mac/Linux)
-│   ├── run_notifications.bat # 通知生成脚本(Windows)
-│   ├── send_email_notifications.py # 邮件发送脚本
-│   ├── send_email_notifications.sh # 邮件发送脚本(Mac/Linux)
-│   └── send_email_notifications.bat # 邮件发送脚本(Windows)
-├── tests/                    # 测试文件
-│   ├── test_simple.py       # 基础功能测试
-│   ├── test_nearby_preview.py # 预览功能测试
-│   └── test_weekly_overview.py # 周程概览测试
-├── utils/                    # 工具和示例
-│   ├── demo_focused_system.py # 系统演示
-│   ├── modify_template.py   # 模板修改工具
-│   └── template_examples.py # 模板示例
-├── configs/                  # 配置文件
-│   ├── config.yaml          # 主配置文件
-│   └── service_account.json # Google API密钥(需自行添加)
-├── data/                     # 数据文件
-├── templates/                # 通知模板
-│   ├── email/               # 邮件HTML模板
-│   ├── sms/                 # 短信模板
-│   └── notification_templates.yaml # 微信群通知模板配置
-├── docs/                     # 文档
-│   └── guides/              # 使用指南
-├── streamlit_app.py         # Web应用主文件
-├── template_editor.py       # 模板编辑器
-└── run_template_editor.py   # 模板编辑器启动脚本
+├── start.py                    # 🚀 统一启动入口
+├── app_unified.py             # 📱 统一Web应用
+├── generate_calendars.py      # 📅 日历生成启动器
+├── src/                       # 📦 核心模块
+│   ├── data_cleaner.py       # 🧹 数据清洗
+│   ├── scheduler.py          # 📅 排程处理
+│   ├── template_manager.py   # 📝 模板管理
+│   ├── email_sender.py       # 📧 邮件发送
+│   └── calendar_generator.py # 🗓️ ICS日历生成器
+├── configs/                   # ⚙️ 配置文件
+├── templates/                 # 📄 模板文件
+├── calendars/                 # 📅 ICS文件
+├── data/                      # 📊 数据文件
+└── requirements.txt           # 📋 依赖包
 ```
 
-## 🚀 快速开始
+## ❓ 常见问题
 
-### 1. 安装依赖
+### Q: 如何更新日历文件？
+A: 在Web界面的"日历管理"页面点击"生成/更新日历文件"按钮
 
-```bash
-# 安装Python依赖包
-pip install -r requirements.txt
-```
+### Q: 邮件发送失败怎么办？
+A: 检查 `.env` 文件中的邮件配置，确保使用应用专用密码
 
-### 2. 配置 Google Sheets API
+### Q: 如何添加新的通知模板？
+A: 修改 `templates/notification_templates.yaml` 文件
 
-1. 在 [Google Cloud Console](https://console.cloud.google.com/) 创建项目
-2. 启用 Google Sheets API
-3. 创建服务账号并下载 JSON 密钥文件
-4. 将密钥文件重命名为 `service_account.json` 并放在 `configs/` 目录下
-5. 将服务账号邮箱添加到您的 Google Sheets 共享列表
+### Q: 数据加载失败怎么办？
+A: 检查Google Sheets是否公开访问，确认Spreadsheet ID正确
 
-### 3. 设置环境变量
+## 📞 技术支持
 
-创建 `.env` 文件并配置：
-
-```env
-GOOGLE_SPREADSHEET_ID=your_spreadsheet_id_here
-```
-
-### 4. 启动应用
-
-#### Web界面（推荐）
-
-```bash
-# Mac/Linux
-python scripts/run_streamlit.py
-
-# 或直接运行
-streamlit run streamlit_app.py
-```
-
-应用将在浏览器中自动打开：http://localhost:8501
-
-#### 命令行工具
-
-```bash
-# 生成通知（Mac/Linux）
-./scripts/run_notifications.sh
-
-# 生成通知（Windows）
-scripts\run_notifications.bat
-```
-
-## 📱 通知模板
-
-系统提供三种通知模板：
-
-### 1. 周三确认通知
-
-提前确认本周主日事工安排
-
-### 2. 周六提醒通知
-
-提醒明天主日的服事时间和注意事项
-
-### 3. 月度总览通知
-
-月初发送当月完整排班表
-
-## 📧 邮件通知功能
-
-邮件通知专为事工负责人设计，包含完整的微信群通知模板，方便直接复制粘贴到微信群。
-
-### 配置邮件发送
-
-1. **设置环境变量**
-
-在项目根目录创建 `.env` 文件：
-
-```bash
-# 发件人邮箱
-SENDER_EMAIL=jonathanjing@graceirvine.org
-SENDER_NAME=Grace Irvine 事工协调
-
-# Gmail应用专用密码
-EMAIL_PASSWORD=your_app_password_here
-
-# 收件人列表（可选）
-RECIPIENT_EMAILS=email1@example.com,email2@example.com
-```
-
-2. **获取Gmail应用专用密码**
-
-- 访问 [Google账户安全设置](https://myaccount.google.com/security)
-- 启用两步验证
-- 生成应用专用密码：[https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
-
-3. **测试邮件功能**
-
-```bash
-# 测试邮件发送
-python test_email_notifications.py
-
-# 发送测试通知
-python scripts/send_email_notifications.py test
-```
-
-### 发送邮件通知
-
-```bash
-# Mac/Linux
-./scripts/send_email_notifications.sh
-
-# Windows
-scripts\send_email_notifications.bat
-
-# 或直接使用Python
-python scripts/send_email_notifications.py weekly  # 周三确认
-python scripts/send_email_notifications.py sunday  # 周六提醒
-```
-
-### 邮件模板
-
-系统提供专门的微信群通知邮件模板：
-- `templates/email/weekly_confirmation_wechat.html` - 周三确认通知（含微信群模板）
-- `templates/email/sunday_reminder_wechat.html` - 周六提醒通知（含微信群模板）
-
-**主要功能：**
-- 📱 一键复制微信群通知内容
-- 📋 详细的发送指导说明
-- 📊 服事安排统计信息
-- ⏰ 最佳发送时间提醒
-
-详细配置说明请参考 [邮件设置指南](docs/guides/EMAIL_SETUP_GUIDE.md)
-
-## 🛠️ 模板管理功能
-
-### 可视化模板编辑
-
-系统提供了直观的Web界面来编辑和管理通知模板：
-
-```bash
-# 启动模板编辑器
-python3 run_template_editor.py
-
-# 或者直接使用streamlit
-streamlit run template_editor.py --server.port 8502
-```
-
-### 主要功能
-
-- **📝 在线编辑**：通过Web界面修改模板内容
-- **👁️ 实时预览**：编辑时即时看到效果
-- **🧪 真实测试**：连接Google Sheets测试实际数据
-- **💾 一键保存**：修改后一键保存到配置文件
-
-### 模板变量
-
-所有模板都支持使用变量来插入动态内容：
-
-**周三确认通知和周六提醒通知：**
-- `{month}` - 月份
-- `{day}` - 日期
-- `{audio_tech}` - 音控人员
-- `{screen_operator}` - 屏幕操作人员
-- `{camera_operator}` - 摄像/导播人员
-- `{propresenter}` - ProPresenter制作人员
-- `{video_editor}` - 视频剪辑人员
-
-**使用示例：**
-```yaml
-template: |
-  【本周{month}月{day}日主日事工安排提醒】🕊️
-  
-  • 音控：{audio_tech}
-  • 屏幕：{screen_operator}
-  
-  请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏
-```
-
-详细配置说明请参考 [邮件设置指南](docs/guides/EMAIL_SETUP_GUIDE.md)
-
-## 🛠️ 开发指南
-
-### 运行测试
-
-```bash
-# 运行所有测试
-python -m pytest tests/
-
-# 运行特定测试
-python tests/test_simple.py
-```
-
-### 添加新功能
-
-1. 在 `src/` 目录下创建新模块
-2. 在 `tests/` 目录下添加相应测试
-3. 更新文档说明
-
-## 📋 数据格式要求
-
-Google Sheets 表格应包含以下列：
-
-- 日期
-- 音控
-- 屏幕/导播
-- 摄像
-- ProPresenter制作
-- 其他事工角色...
-
-## 🔧 故障排除
-
-### 常见问题
-
-1. **无法连接 Google Sheets**
-
-   - 确保服务账号已正确配置
-   - 检查表格共享权限
-2. **数据质量低**
-
-   - 检查原始表格数据格式
-   - 确认日期格式正确
-3. **模板生成失败**
-
-   - 确认表格中有对应日期的数据
-   - 检查列名是否正确
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
-
-## 🙏 致谢
-
-感谢所有为这个项目做出贡献的同工们，愿神祝福我们的服事！
+如有问题，请检查：
+1. 环境变量配置是否正确
+2. 网络连接是否正常
+3. Google Sheets是否可访问
+4. 依赖包是否完整安装
 
 ---
 
-**项目目标**: 通过技术手段提升事工管理效率，让同工们能够更专注于属灵的服事。
-
-*最后更新: 2025年*
+**Grace Irvine Ministry Scheduler v2.0** - 简化版本
+Made with ❤️ for Grace Irvine Presbyterian Church

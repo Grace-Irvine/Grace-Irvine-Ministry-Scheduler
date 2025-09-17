@@ -16,23 +16,14 @@ from typing import Dict, List, Optional, Any
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-from dataclasses import dataclass
+# 导入统一数据模型
+from .models import MinistryAssignment, ServiceRole, validate_ministry_assignment
 from pathlib import Path
 import yaml
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-@dataclass
-class MinistryAssignment:
-    """事工安排数据结构"""
-    date: date
-    audio_tech: str = ""      # 音控
-    screen_operator: str = ""  # 屏幕
-    camera_operator: str = ""  # 摄像/导播
-    propresenter: str = ""     # Propresenter 制作
-    video_editor: str = "靖铮"  # 视频剪辑（固定）
 
 class GoogleSheetsExtractor:
     """Google Sheets 数据提取器"""
@@ -86,6 +77,13 @@ class GoogleSheetsExtractor:
             # 首先尝试从环境变量读取服务账号密钥
             service_account_key = os.getenv('GOOGLE_SERVICE_ACCOUNT_KEY')
             
+            # 设置认证范围
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets.readonly',
+                'https://www.googleapis.com/auth/drive.readonly'
+            ]
+            
+            # 创建认证凭据
             if service_account_key:
                 # 从环境变量读取JSON密钥
                 import json
@@ -97,25 +95,22 @@ class GoogleSheetsExtractor:
                     temp_service_account_path = f.name
                 
                 logger.info(f"Using service account from environment variable (temp file: {temp_service_account_path})")
-                service_account_path = temp_service_account_path
-            elif Path(self.service_account_path).exists():
-                # 回退到本地文件
-                service_account_path = self.service_account_path
-                logger.info(f"Using local service account file: {self.service_account_path}")
+                credentials = Credentials.from_service_account_file(
+                    temp_service_account_path, 
+                    scopes=scopes
+                )
+            elif self.service_account_path and Path(self.service_account_path).exists():
+                # 使用服务账号文件
+                credentials = Credentials.from_service_account_file(
+                    self.service_account_path, 
+                    scopes=scopes
+                )
+                logger.info(f"Using service account file: {self.service_account_path}")
             else:
-                raise FileNotFoundError(f"Service account not found in environment variable or file: {self.service_account_path}")
-            
-            # 设置认证范围
-            scopes = [
-                'https://www.googleapis.com/auth/spreadsheets.readonly',
-                'https://www.googleapis.com/auth/drive.readonly'
-            ]
-            
-            # 创建认证凭据
-            credentials = Credentials.from_service_account_file(
-                service_account_path, 
-                scopes=scopes
-            )
+                # 在云环境中使用默认凭据
+                from google.auth import default
+                credentials, project = default(scopes=scopes)
+                logger.info(f"Using default credentials in cloud environment, project: {project}")
             
             # 初始化客户端
             self.client = gspread.authorize(credentials)
@@ -189,19 +184,18 @@ class GoogleSheetsExtractor:
                     logger.warning(f"Could not parse date in row {i}: {date_str}")
                     continue
                 
-                # 解析各个角色
+                # 解析各个角色（使用统一数据模型）
                 assignment = MinistryAssignment(
                     date=parsed_date,
-                    audio_tech=self._clean_name(row[role_mappings.get('音控', 0)]) if '音控' in role_mappings else "",
-                    screen_operator=self._clean_name(row[role_mappings.get('屏幕', 0)]) if '屏幕' in role_mappings else "",
-                    camera_operator=self._clean_name(row[role_mappings.get('导播/摄影', 0)]) if '导播/摄影' in role_mappings else "",
-                    propresenter=self._clean_name(row[role_mappings.get('ProPresenter播放', 0)]) if 'ProPresenter播放' in role_mappings else "",
+                    audio_tech=self._clean_name(row[role_mappings.get('音控', 0)]) if '音控' in role_mappings else None,
+                    video_director=self._clean_name(row[role_mappings.get('导播/摄影', 0)]) if '导播/摄影' in role_mappings else None,
+                    propresenter_play=self._clean_name(row[role_mappings.get('ProPresenter播放', 0)]) if 'ProPresenter播放' in role_mappings else None,
+                    propresenter_update=self._clean_name(row[role_mappings.get('ProPresenter更新', 0)]) if 'ProPresenter更新' in role_mappings else None,
                     video_editor="靖铮"  # 固定值
                 )
                 
                 # 只添加有实际安排的记录
-                if any([assignment.audio_tech, assignment.screen_operator, 
-                       assignment.camera_operator, assignment.propresenter]):
+                if assignment.has_assignments():
                     assignments.append(assignment)
                     
             except Exception as e:
