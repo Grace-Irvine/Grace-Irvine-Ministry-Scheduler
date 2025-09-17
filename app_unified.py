@@ -914,9 +914,16 @@ def show_ics_viewer_page():
     
     st.markdown("---")
     
+    # 清理文件名（去除前缀符号）
+    clean_filename = selected_file
+    if selected_file.startswith("☁️ "):
+        clean_filename = selected_file.replace("☁️ ", "", 1).strip()
+    elif selected_file.startswith("💻 "):
+        clean_filename = selected_file.replace("💻 ", "", 1).strip()
+    
     # 文件内容读取和显示
-    with st.spinner(f"正在读取文件: {selected_file}..."):
-        content, source_info = read_ics_file_smart(selected_file, data_source)
+    with st.spinner(f"正在读取文件: {clean_filename}..."):
+        content, source_info = read_ics_file_smart(clean_filename, data_source)
     
     if not content:
         st.error(f"❌ 无法读取文件: {selected_file}")
@@ -1465,8 +1472,15 @@ def show_ics_events_content_enhanced():
         )
     
     if selected_file:
+        # 清理文件名（去除前缀符号）
+        clean_filename = selected_file
+        if selected_file.startswith("☁️ "):
+            clean_filename = selected_file.replace("☁️ ", "", 1).strip()
+        elif selected_file.startswith("💻 "):
+            clean_filename = selected_file.replace("💻 ", "", 1).strip()
+        
         # 读取文件内容
-        content, source_info = read_ics_file_smart(selected_file, data_source)
+        content, source_info = read_ics_file_smart(clean_filename, data_source)
         
         if not content:
             st.error(f"❌ 无法读取文件: {selected_file}")
@@ -1546,8 +1560,10 @@ def get_available_ics_files(data_source: str) -> List[str]:
                     prefix = storage_manager.config.calendars_path
                     for blob in storage_manager.bucket.list_blobs(prefix=prefix):
                         if blob.name.endswith('.ics'):
-                            filename = blob.name.replace(prefix, '')
-                            files.append(f"☁️ {filename}")
+                            # 确保正确处理文件名，去除前缀和多余的空格/字符
+                            filename = blob.name.replace(prefix, '').strip()
+                            if filename:  # 确保文件名不为空
+                                files.append(f"☁️ {filename}")
                     cloud_available = True
                     logger.info(f"云端文件列表获取成功: {len([f for f in files if f.startswith('☁️')])} 个文件")
                 except Exception as e:
