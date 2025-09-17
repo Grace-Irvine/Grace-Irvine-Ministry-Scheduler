@@ -69,7 +69,7 @@ def main():
     except KeyboardInterrupt:
         print("\n👋 应用已停止，感谢使用！")
     except Exception as e:
-        print(f"\n❌ 启动失败: {e}")
+        print(f"{chr(10)}❌ 启动失败: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

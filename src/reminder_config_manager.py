@@ -481,7 +481,7 @@ def test_reminder_config():
     print(f"📋 加载了 {len(configs)} 个配置:")
     
     for event_type, config in configs.items():
-        print(f"\n📅 {config.name} ({event_type}):")
+        print(f"{chr(10)}📅 {config.name} ({event_type}):")
         print(f"  启用: {'✅' if config.enabled else '❌'}")
         print(f"  事件时间: {config.event_timing.get_weekday_name()} {config.event_timing.hour:02d}:{config.event_timing.minute:02d}")
         print(f"  持续时间: {config.event_timing.duration_minutes} 分钟")

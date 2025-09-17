@@ -38,7 +38,7 @@ def main():
     except KeyboardInterrupt:
         print("\n👋 服务已停止")
     except Exception as e:
-        print(f"\n❌ 启动失败: {e}")
+        print(f"{chr(10)}❌ 启动失败: {e}")
 
 if __name__ == "__main__":
     main()

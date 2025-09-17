@@ -12,7 +12,7 @@ from datetime import datetime
 
 def run_command(cmd, description):
     """运行命令并处理错误"""
-    print(f"\n🔧 {description}")
+    print(f"{chr(10)}🔧 {description}")
     print(f"执行命令: {' '.join(cmd)}")
     
     try:
