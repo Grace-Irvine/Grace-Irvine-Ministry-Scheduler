@@ -174,6 +174,51 @@ class ScriptureManager:
             logger.error(f"获取当前经文失败: {e}")
             return None
     
+    def get_scripture_by_date(self, target_date) -> Optional[Dict[str, Any]]:
+        """根据日期获取稳定的经文（用于ICS生成，不会递增索引）
+        
+        基于日期生成一个稳定的索引，确保同一日期总是返回相同的经文。
+        这样在重新生成ICS文件时不会导致经文索引快速递增。
+        
+        Args:
+            target_date: 目标日期 (date对象)
+            
+        Returns:
+            经文字典
+        """
+        try:
+            scriptures = self.scriptures_data.get('scriptures', [])
+            if not scriptures:
+                return None
+            
+            # 使用日期的天数作为种子，生成稳定的索引
+            # 这样每次为同一日期生成ICS时会得到相同的经文
+            from datetime import date as date_class
+            if isinstance(target_date, date_class):
+                # 使用自2020年1月1日以来的周数来选择经文
+                # 这样每周都会使用不同的经文，但同一周的不同生成会使用相同的经文
+                base_date = date_class(2020, 1, 1)
+                days_diff = (target_date - base_date).days
+                weeks_diff = days_diff // 7  # 按周计算
+                
+                # 使用周数对经文总数取模，得到稳定的索引
+                scripture_index = weeks_diff % len(scriptures)
+            else:
+                # 如果不是date对象，使用当前索引
+                metadata = self.scriptures_data.get('metadata', {})
+                scripture_index = metadata.get('current_index', 0)
+            
+            # 确保索引在有效范围内
+            if scripture_index >= len(scriptures):
+                scripture_index = 0
+            
+            logger.info(f"为日期 {target_date} 选择经文索引: {scripture_index}")
+            return scriptures[scripture_index]
+            
+        except Exception as e:
+            logger.error(f"根据日期获取经文失败: {e}")
+            return None
+    
     def get_all_scriptures(self) -> List[Dict[str, Any]]:
         """获取所有经文列表
         

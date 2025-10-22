@@ -204,12 +204,13 @@ class DynamicTemplateManager:
             logger.error(f"更新模板失败: {e}")
             return False
     
-    def render_weekly_confirmation(self, sunday_date: date, schedule) -> str:
+    def render_weekly_confirmation(self, sunday_date: date, schedule, for_ics_generation: bool = False) -> str:
         """渲染周三确认通知
         
         Args:
             sunday_date: 主日日期
             schedule: 排程对象
+            for_ics_generation: 是否用于ICS生成（True时使用基于日期的固定经文，False时使用递增的经文索引）
             
         Returns:
             渲染后的通知内容
@@ -248,7 +249,13 @@ class DynamicTemplateManager:
         # 获取经文分享
         scripture_text = ""
         try:
-            current_scripture = self.scripture_manager.get_next_scripture()
+            if for_ics_generation:
+                # ICS生成时：使用基于日期的固定经文，避免每次重新生成时递增索引
+                current_scripture = self.scripture_manager.get_scripture_by_date(sunday_date)
+            else:
+                # 实际发送通知时：使用递增索引的经文
+                current_scripture = self.scripture_manager.get_next_scripture()
+            
             if current_scripture:
                 scripture_text = self.scripture_manager.format_scripture_for_template(current_scripture)
         except Exception as e:

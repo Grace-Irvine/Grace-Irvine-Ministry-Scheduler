@@ -110,11 +110,14 @@ def generate_coordinator_ics(assignments) -> str:
         ]
         
         today = date.today()
-        future_assignments = [a for a in assignments if a.date >= today][:15]
+        # 保留过去4周的事件，避免每次更新时删除历史记录
+        cutoff_date = today - timedelta(days=28)  # 4周前
+        # 包含过去4周到未来15周的事件
+        relevant_assignments = [a for a in assignments if a.date >= cutoff_date][:19]  # 4周过去 + 15周未来
         
         events_created = 0
         
-        for assignment in future_assignments:
+        for assignment in relevant_assignments:
             # 周三确认通知事件
             wednesday = assignment.date - timedelta(days=4)
             if wednesday >= today - timedelta(days=7):

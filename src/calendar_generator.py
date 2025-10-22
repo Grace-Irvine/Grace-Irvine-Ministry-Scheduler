@@ -147,10 +147,13 @@ def generate_coordinator_calendar():
         ]
         
         today = date.today()
-        future_schedules = [s for s in schedules if s.date >= today][:15]  # 未来15周
+        # 保留过去4周的事件，避免每次更新时删除历史记录
+        cutoff_date = today - timedelta(days=28)  # 4周前
+        # 包含过去4周到未来15周的事件
+        relevant_schedules = [s for s in schedules if s.date >= cutoff_date][:19]  # 4周过去 + 15周未来
         events_created = 0
         
-        for schedule in future_schedules:
+        for schedule in relevant_schedules:
             # 周三确认通知事件
             if 'weekly_confirmation' in reminder_configs and reminder_configs['weekly_confirmation'].enabled:
                 config = reminder_configs['weekly_confirmation']
@@ -159,8 +162,8 @@ def generate_coordinator_calendar():
                 
                 if event_date >= today - timedelta(days=7):
                     try:
-                        # 使用与前端一致的模板生成逻辑
-                        notification_content = generate_unified_wednesday_template(schedule.date, schedule)
+                        # 使用与前端一致的模板生成逻辑，使用基于日期的固定经文
+                        notification_content = dynamic_template_manager.render_weekly_confirmation(schedule.date, schedule, for_ics_generation=True)
                         
                         # 使用配置的时间
                         start_dt = datetime.combine(
@@ -187,7 +190,7 @@ def generate_coordinator_calendar():
                 wednesday = schedule.date - timedelta(days=4)
                 if wednesday >= today - timedelta(days=7):
                     try:
-                        notification_content = generate_unified_wednesday_template(schedule.date, schedule)
+                        notification_content = dynamic_template_manager.render_weekly_confirmation(schedule.date, schedule, for_ics_generation=True)
                         event_ics = create_ics_event(
                             uid=f"weekly_confirmation_{wednesday.strftime('%Y%m%d')}@graceirvine.org",
                             summary=f"发送周末确认通知 ({schedule.date.month}/{schedule.date.day})",
@@ -211,7 +214,7 @@ def generate_coordinator_calendar():
                 if event_date >= today - timedelta(days=7):
                     try:
                         # 使用与前端一致的模板生成逻辑
-                        notification_content = generate_unified_saturday_template(schedule.date, schedule)
+                        notification_content = dynamic_template_manager.render_saturday_reminder(schedule.date, schedule)
                         
                         # 使用配置的时间
                         start_dt = datetime.combine(
@@ -238,7 +241,7 @@ def generate_coordinator_calendar():
                 saturday = schedule.date - timedelta(days=1)
                 if saturday >= today - timedelta(days=7):
                     try:
-                        notification_content = generate_unified_saturday_template(schedule.date, schedule)
+                        notification_content = dynamic_template_manager.render_saturday_reminder(schedule.date, schedule)
                         event_ics = create_ics_event(
                             uid=f"sunday_reminder_{saturday.strftime('%Y%m%d')}@graceirvine.org",
                             summary=f"发送主日提醒通知 ({schedule.date.month}/{schedule.date.day})",

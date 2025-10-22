@@ -91,10 +91,12 @@ def update_coordinator_calendar() -> bool:
         ]
         
         today = date.today()
-        future_assignments = [a for a in assignments if a.date >= today][:15]  # 未来15周
+        # 保留过去4周的事件，避免每次更新时删除历史记录
+        cutoff_date = today - timedelta(days=28)  # 4周前
+        relevant_assignments = [a for a in assignments if a.date >= cutoff_date][:19]  # 4周过去 + 15周未来
         events_created = 0
         
-        for assignment in future_assignments:
+        for assignment in relevant_assignments:
             # 周三确认通知事件
             wednesday = assignment.date - timedelta(days=4)
             if wednesday >= today - timedelta(days=7):
@@ -203,10 +205,12 @@ def update_workers_calendar() -> bool:
         ]
         
         today = date.today()
-        future_assignments = [a for a in assignments if a.date >= today][:10]
+        # 保留过去4周的事件
+        cutoff_date = today - timedelta(days=28)
+        relevant_assignments = [a for a in assignments if a.date >= cutoff_date][:14]  # 4周过去 + 10周未来
         events_created = 0
         
-        for assignment in future_assignments:
+        for assignment in relevant_assignments:
             # 为每个角色创建服事事件
             service_roles = [
                 ("音控", assignment.audio_tech, "09:00", "12:00"),
