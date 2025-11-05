@@ -1,0 +1,27 @@
+{
+  "sermons": [
+    {
+      "service_date": "2025-11-09",
+      "sermon_title": "主日证道主题",
+      "preacher": "讲员姓名",
+      "reading": "读经人员",
+      "series": "讲道系列",
+      "scripture": "经文引用",
+      "scripture_text": "经文内容..."
+    },
+    {
+      "service_date": "2025-11-16",
+      "sermon_title": "主日证道主题2",
+      "preacher": "讲员姓名2",
+      "reading": "读经人员2",
+      "series": "讲道系列2",
+      "scripture": "经文引用2",
+      "scripture_text": "经文内容2..."
+    }
+  ],
+  "metadata": {
+    "last_updated": "2025-11-04T21:00:00Z",
+    "source": "test_data"
+  }
+}
+

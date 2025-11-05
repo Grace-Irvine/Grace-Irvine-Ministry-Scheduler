@@ -141,10 +141,11 @@ class DynamicTemplateManager:
                     "no_assignment_template": "【本周主日事工安排提醒】🕊️\n\n暂无本周事工安排，请联系协调员确认。",
                     "assignment_format": "• {role}：{person}",
                     "default_assignments": {
-                        "音控": "待安排",
-                        "导播/摄影": "待安排", 
-                        "ProPresenter播放": "待安排",
-                        "ProPresenter更新": "待安排"
+                        "audio_tech": "待安排",
+                        "video_director": "待安排", 
+                        "propresenter_play": "待安排",
+                        "propresenter_update": "待安排",
+                        "video_editor": "待安排"
                     }
                 },
                 "saturday_reminder": {
@@ -161,7 +162,7 @@ class DynamicTemplateManager:
                     "service_times": {
                         "音控": "9:00",
                         "导播/摄影": "9:30",
-                        "ProPresenter播放": "9:00"
+                        "ProPresenter播放": "8:30"
                     }
                 }
             },
@@ -230,21 +231,33 @@ class DynamicTemplateManager:
             'video_director': default_assignments.get('video_director', '待安排'),
             'propresenter_play': default_assignments.get('propresenter_play', '待安排'),
             'propresenter_update': default_assignments.get('propresenter_update', '待安排'),
-            'video_editor': default_assignments.get('video_editor', '靖铮')
+            'video_editor': default_assignments.get('video_editor', '待安排')
         }
         
         # 如果有实际安排，使用实际人员
+        # 注意：如果字段是空字符串（占位符文本被过滤掉），应该使用默认值"待安排"
         if schedule:
-            if schedule.audio_tech:
-                template_vars['audio_tech'] = schedule.audio_tech
-            if schedule.video_director:
-                template_vars['video_director'] = schedule.video_director
-            if schedule.propresenter_play:
-                template_vars['propresenter_play'] = schedule.propresenter_play
-            if schedule.propresenter_update:
-                template_vars['propresenter_update'] = schedule.propresenter_update
-            if schedule.video_editor:
-                template_vars['video_editor'] = schedule.video_editor
+            # 使用 getattr 获取值
+            # 如果有实际人名，使用实际人名；如果是空字符串（被过滤掉），使用默认值"待安排"
+            audio_tech = getattr(schedule, 'audio_tech', None)
+            if audio_tech is not None:
+                template_vars['audio_tech'] = audio_tech if audio_tech else default_assignments.get('audio_tech', '待安排')
+            
+            video_director = getattr(schedule, 'video_director', None)
+            if video_director is not None:
+                template_vars['video_director'] = video_director if video_director else default_assignments.get('video_director', '待安排')
+            
+            propresenter_play = getattr(schedule, 'propresenter_play', None)
+            if propresenter_play is not None:
+                template_vars['propresenter_play'] = propresenter_play if propresenter_play else default_assignments.get('propresenter_play', '待安排')
+            
+            propresenter_update = getattr(schedule, 'propresenter_update', None)
+            if propresenter_update is not None:
+                template_vars['propresenter_update'] = propresenter_update if propresenter_update else default_assignments.get('propresenter_update', '待安排')
+            
+            video_editor = getattr(schedule, 'video_editor', None)
+            if video_editor is not None:
+                template_vars['video_editor'] = video_editor if video_editor else default_assignments.get('video_editor', '待安排')
         
         # 获取经文分享
         scripture_text = ""
@@ -265,12 +278,12 @@ class DynamicTemplateManager:
         template_vars['scripture_sharing'] = scripture_text
         
         # 渲染主模板
+        # 始终使用主模板，显示所有字段（包括"待安排"）
         template = template_config.get('template', '')
-        if not schedule or not schedule.has_assignments():
-            template = template_config.get('no_assignment_template', template)
         
         try:
-            return template.format(**template_vars)
+            formatted_template = template.format(**template_vars)
+            return formatted_template
         except Exception as e:
             logger.error(f"渲染周三确认通知失败: {e}")
             return template_config.get('no_assignment_template', '模板渲染失败')
