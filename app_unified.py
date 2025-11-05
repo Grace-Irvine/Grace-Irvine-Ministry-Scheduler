@@ -30,11 +30,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # 导入项目模块
 from src.models import MinistryAssignment, ServiceRole  # 统一数据模型
-from src.data_cleaner import FocusedDataCleaner
+from src.json_data_reader import get_json_data_reader  # 从 GCS 读取 JSON 数据
 from src.template_manager import NotificationTemplateManager
 from src.dynamic_template_manager import DynamicTemplateManager
-from src.scheduler import GoogleSheetsExtractor, NotificationGenerator
 from src.email_sender import EmailSender, EmailRecipient
+from src.multi_calendar_generator import generate_all_calendars  # 使用新的日历生成器
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -263,24 +263,24 @@ async def trigger_ics_update(auth_token: str = Header(None, alias="X-Auth-Token"
 async def automatic_ics_update():
     """
     自动更新ICS文件的核心函数
-    1. 从Google Sheets读取最新数据
+    1. 从GCS bucket读取最新JSON数据（已清洗）
     2. 从Bucket读取最新模板
     3. 生成新的ICS文件
     4. 上传到Bucket
     """
     try:
-        # 1. 从Google Sheets读取最新数据
-        logger.info("Step 1: Loading data from Google Sheets")
-        cleaner = FocusedDataCleaner()
-        raw_df = cleaner.download_data()
-        focused_df = cleaner.extract_focused_columns(raw_df)
-        schedules = cleaner.clean_focused_data(focused_df)
+        # 1. 验证数据读取器可以正常工作（数据已从bucket读取）
+        logger.info("Step 1: Verifying data reader (data is read from GCS bucket)")
+        data_reader = get_json_data_reader()
+        schedules = data_reader.get_service_schedule()
         
         if not schedules:
             return {
                 "success": False,
-                "message": "No schedule data found in Google Sheets"
+                "message": "No schedule data found in GCS bucket"
             }
+        
+        logger.info(f"✅ 成功读取 {len(schedules)} 条排程数据")
         
         # 2. 从Bucket读取最新模板和配置
         logger.info("Step 2: Loading templates and configs from cloud storage")
@@ -305,61 +305,75 @@ async def automatic_ics_update():
                 json.dump(reminder_config_content, f, ensure_ascii=False, indent=2)
             logger.info("Reminder configurations synced from cloud storage")
         
-        # 3. 生成新的ICS文件
+        # 3. 生成新的ICS文件（使用新的多日历生成器）
         logger.info("Step 3: Generating ICS calendar files")
-        from src.calendar_generator import generate_coordinator_calendar
+        from src.multi_calendar_generator import generate_all_calendars
+        from src.cloud_storage_manager import get_storage_manager
         
-        # 生成日历
-        success = generate_coordinator_calendar()
+        # 生成所有日历类型
+        results = generate_all_calendars()
         
-        if not success:
+        if not results:
             return {
                 "success": False,
-                "message": "Failed to generate ICS calendar"
+                "message": "Failed to generate ICS calendars"
             }
         
-        # 4. 确保上传到Bucket
+        # 4. 上传到Bucket
         logger.info("Step 4: Uploading to cloud storage")
-        calendar_path = Path("calendars/grace_irvine_coordinator.ics")
+        storage_manager = get_storage_manager()
         
-        if calendar_path.exists():
-            # 读取生成的文件
-            with open(calendar_path, 'r', encoding='utf-8') as f:
-                ics_content = f.read()
-            
-            # 上传到云端
-            upload_success = storage_manager.write_ics_calendar(
-                ics_content, 
-                "grace_irvine_coordinator.ics"
-            )
-            
-            if upload_success:
-                # 获取公开URL
-                public_url = storage_manager.get_public_calendar_url("grace_irvine_coordinator.ics")
+        uploaded_files = []
+        total_events = 0
+        
+        for calendar_type, ics_content in results.items():
+            if ics_content:
+                # 确定文件名
+                filename_map = {
+                    'media_team': 'media-team.ics',
+                    'children_team': 'children-team.ics',
+                    'weekly_overview': 'weekly-overview.ics'
+                }
+                filename = filename_map.get(calendar_type, f"{calendar_type}.ics")
                 
-                return {
-                    "success": True,
-                    "message": "ICS calendar updated successfully",
-                    "details": {
-                        "events_count": ics_content.count("BEGIN:VEVENT"),
-                        "file_size": f"{len(ics_content.encode('utf-8')) / 1024:.1f} KB",
-                        "public_url": public_url,
-                        "update_time": datetime.now().isoformat()
-                    }
+                # 上传到云端
+                upload_success = storage_manager.write_ics_calendar(
+                    ics_content, 
+                    filename
+                )
+                
+                if upload_success:
+                    event_count = ics_content.count("BEGIN:VEVENT")
+                    total_events += event_count
+                    uploaded_files.append({
+                        "type": calendar_type,
+                        "filename": filename,
+                        "events": event_count,
+                        "size_kb": f"{len(ics_content.encode('utf-8')) / 1024:.1f}"
+                    })
+                    logger.info(f"✅ 成功上传 {filename} ({event_count} 个事件)")
+        
+        if uploaded_files:
+            return {
+                "success": True,
+                "message": "ICS calendars updated successfully",
+                "details": {
+                    "files_count": len(uploaded_files),
+                    "total_events": total_events,
+                    "files": uploaded_files,
+                    "update_time": datetime.now().isoformat()
                 }
-            else:
-                return {
-                    "success": False,
-                    "message": "Failed to upload ICS to cloud storage"
-                }
+            }
         else:
             return {
                 "success": False,
-                "message": "ICS file not found after generation"
+                "message": "Failed to upload ICS calendars to cloud storage"
             }
             
     except Exception as e:
         logger.error(f"Error in automatic ICS update: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {
             "success": False,
             "message": f"Update failed: {str(e)}"
@@ -429,28 +443,54 @@ def load_css():
 
 @st.cache_data(ttl=300)  # 缓存5分钟
 def load_ministry_data():
-    """加载和清洗事工数据"""
+    """从GCS bucket加载已清洗的事工数据"""
     try:
-        cleaner = FocusedDataCleaner()
+        # 使用JSON数据读取器从GCS读取数据
+        data_reader = get_json_data_reader()
+        schedules = data_reader.get_service_schedule()
         
-        # 下载和处理数据
-        raw_df = cleaner.download_data()
-        focused_df = cleaner.extract_focused_columns(raw_df)
-        schedules = cleaner.clean_focused_data(focused_df)
+        if not schedules:
+            return {
+                'success': False,
+                'error': 'No schedule data found in GCS bucket',
+                'schedules': [],
+                'summary_report': {},
+                'stats': {}
+            }
         
         # 生成汇总报告
-        summary_report = cleaner.generate_summary_report(schedules)
+        summary_report = {
+            'total_schedules': len(schedules),
+            'date_range': {
+                'earliest': min(s.date for s in schedules).isoformat() if schedules else None,
+                'latest': max(s.date for s in schedules).isoformat() if schedules else None
+            },
+            'media_assignments': sum(1 for s in schedules if s.media_team),
+            'children_assignments': sum(1 for s in schedules if s.children_team),
+            'worship_assignments': sum(1 for s in schedules if s.worship_team)
+        }
+        
+        # 统计信息
+        stats = {
+            'total_rows': len(schedules),
+            'valid_rows': len(schedules),
+            'cleaned_names': len(schedules),
+            'invalid_dates': 0,
+            'empty_rows_removed': 0
+        }
         
         return {
             'success': True,
             'schedules': schedules,
             'summary_report': summary_report,
-            'stats': cleaner.stats,
-            'raw_data': raw_df,
-            'focused_data': focused_df
+            'stats': stats,
+            'raw_data': None,  # 不再需要原始数据
+            'focused_data': None  # 不再需要清洗后的数据框
         }
     except Exception as e:
         logger.error(f"加载数据失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {
             'success': False,
             'error': str(e),
@@ -500,17 +540,46 @@ def call_api_update():
 def call_local_update():
     """本地更新（用于开发环境）"""
     try:
-        # 运行日历生成脚本
-        result = subprocess.run([
-            sys.executable, '-m', 'src.calendar_generator'
-        ], capture_output=True, text=True, timeout=60, cwd=PROJECT_ROOT)
+        # 使用新的多日历生成器
+        from src.multi_calendar_generator import generate_all_calendars
+        from src.cloud_storage_manager import get_storage_manager
         
-        if result.returncode == 0:
-            return True, "日历文件生成成功"
+        # 生成所有日历类型
+        results = generate_all_calendars()
+        
+        if not results:
+            return False, "生成失败：未生成任何日历文件"
+        
+        # 保存到本地文件
+        saved_files = []
+        for calendar_type, ics_content in results.items():
+            if ics_content:
+                # 确定文件名
+                filename_map = {
+                    'media_team': 'media-team.ics',
+                    'children_team': 'children-team.ics',
+                    'weekly_overview': 'weekly-overview.ics'
+                }
+                filename = filename_map.get(calendar_type, f"{calendar_type}.ics")
+                
+                # 保存到本地
+                calendar_path = Path("calendars") / filename
+                calendar_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(calendar_path, 'w', encoding='utf-8') as f:
+                    f.write(ics_content)
+                
+                saved_files.append(filename)
+        
+        if saved_files:
+            return True, f"日历文件生成成功 ({len(saved_files)} 个文件: {', '.join(saved_files)})"
         else:
-            return False, f"生成失败: {result.stderr}"
+            return False, "生成失败：未保存任何文件"
             
     except Exception as e:
+        logger.error(f"本地更新异常: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False, f"生成异常: {str(e)}"
 
 # ==================== UI组件 ====================
@@ -689,6 +758,234 @@ def show_calendar_management():
         
         if st.button("☁️ 推送到云端Bucket", type="primary", use_container_width=True):
             upload_ics_to_bucket()
+    
+    # 添加新的多类型 ICS 查看器
+    st.markdown("---")
+    st.markdown("#### 🆕 多类型 ICS 日历查看器")
+    st.markdown("查看云端生成的新类型 ICS 日历文件（媒体部、儿童部、每周概览）")
+    
+    show_new_ics_viewer()
+
+def show_new_ics_viewer():
+    """显示新的多类型 ICS 日历查看器"""
+    st.markdown("---")
+    
+    # 定义新的 ICS 文件类型
+    ics_types = {
+        "媒体部服事日历": {
+            "filename": "media-team.ics",
+            "description": "媒体部同工服事安排日历（周三、周六通知）",
+            "icon": "🎤"
+        },
+        "儿童部服事日历": {
+            "filename": "children-team.ics",
+            "description": "儿童部同工服事安排日历（周三、周六通知）",
+            "icon": "👶"
+        },
+        "每周全部事工概览": {
+            "filename": "weekly-overview.ics",
+            "description": "每周全部事工安排概览（周一通知，包含所有证道和服事）",
+            "icon": "📋"
+        }
+    }
+    
+    # 数据源选择
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        data_source = st.radio(
+            "选择数据源:",
+            ["🌐 智能读取（云端优先）", "💻 本地文件", "☁️ 仅云端"],
+            key="new_ics_data_source",
+            help="智能读取会自动选择最佳数据源"
+        )
+    
+    with col2:
+        # 选择要查看的 ICS 类型
+        selected_type = st.selectbox(
+            "选择 ICS 类型:",
+            options=list(ics_types.keys()),
+            key="ics_type_selector",
+            format_func=lambda x: f"{ics_types[x]['icon']} {x} - {ics_types[x]['description']}"
+        )
+    
+    if selected_type:
+        ics_info = ics_types[selected_type]
+        filename = ics_info['filename']
+        
+        st.markdown(f"### {ics_info['icon']} {selected_type}")
+        st.caption(ics_info['description'])
+        
+        # 读取文件
+        with st.spinner(f"正在读取 {filename}..."):
+            content, source_info = read_ics_file_smart(filename, data_source)
+        
+        if not content:
+            st.error(f"❌ 无法读取文件: {filename}")
+            st.markdown("**可能的原因：**")
+            st.markdown("- 文件尚未生成")
+            st.markdown("- 云端存储连接问题")
+            st.markdown("- 文件权限问题")
+            
+            # 提供生成选项
+            if st.button(f"🔄 生成 {selected_type}", type="primary"):
+                with st.spinner("正在生成 ICS 文件..."):
+                    try:
+                        from src.multi_calendar_generator import generate_all_calendars
+                        results = generate_all_calendars()
+                        
+                        if results['success']:
+                            # 根据文件名获取对应的日历类型
+                            calendar_type_map = {
+                                'media-team.ics': 'media-team',
+                                'children-team.ics': 'children-team',
+                                'weekly-overview.ics': 'weekly-overview'
+                            }
+                            calendar_type = calendar_type_map.get(filename)
+                            calendar_result = results['calendars'].get(calendar_type) if calendar_type else None
+                            
+                            if calendar_result and calendar_result['success']:
+                                # 保存到本地
+                                from src.cloud_storage_manager import get_storage_manager
+                                storage_manager = get_storage_manager()
+                                saved = storage_manager.write_ics_calendar(
+                                    calendar_result['content'],
+                                    filename
+                                )
+                                if saved:
+                                    st.success(f"✅ {selected_type} 生成成功！")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ 文件保存失败")
+                            else:
+                                st.error(f"❌ 生成失败: {calendar_result.get('error', '未知错误')}")
+                        else:
+                            st.error("❌ 生成失败")
+                    except Exception as e:
+                        st.error(f"❌ 生成过程出错: {e}")
+            return
+        
+        # 显示数据源信息
+        st.success(f"✅ 文件读取成功 | 📊 数据源: {source_info}")
+        
+        # 解析并显示事件
+        try:
+            events = parse_ics_events(content)
+            
+            if not events:
+                st.warning("📄 文件中没有找到有效的事件")
+                st.info("💡 这可能是因为日期范围设置或数据源中没有对应的数据")
+                return
+            
+            # 创建标签页
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📅 事件列表", 
+                "📊 统计分析", 
+                "🔧 原始数据",
+                "📖 事件详情"
+            ])
+            
+            with tab1:
+                st.markdown(f"#### 📋 {selected_type} 包含的事件 ({len(events)} 个)")
+                
+                # 事件筛选
+                col1, col2 = st.columns(2)
+                with col1:
+                    filter_keyword = st.text_input(
+                        "🔍 搜索关键词:",
+                        key="event_search",
+                        placeholder="输入关键词筛选事件..."
+                    )
+                
+                with col2:
+                    view_mode = st.selectbox(
+                        "显示模式:",
+                        ["详细模式", "紧凑模式", "表格模式"],
+                        key="event_view_mode"
+                    )
+                
+                # 筛选事件
+                if filter_keyword:
+                    filtered_events = [
+                        e for e in events 
+                        if filter_keyword.lower() in e.get('summary', '').lower() 
+                        or filter_keyword.lower() in e.get('description', '').lower()
+                    ]
+                else:
+                    filtered_events = events
+                
+                if filtered_events:
+                    st.info(f"📊 显示 {len(filtered_events)} / {len(events)} 个事件")
+                    
+                    # 显示事件
+                    for i, event in enumerate(filtered_events, 1):
+                        with st.expander(f"事件 {i}: {event.get('summary', '未知事件')}", expanded=(i == 1)):
+                            col1, col2 = st.columns([1, 2])
+                            
+                            with col1:
+                                st.markdown("**基本信息:**")
+                                st.text(f"📅 日期: {event.get('start_time', 'N/A')}")
+                                st.text(f"⏰ 时间: {event.get('start_time', 'N/A')} - {event.get('end_time', 'N/A')}")
+                                st.text(f"📍 地点: {event.get('location', 'N/A')}")
+                                st.text(f"🆔 UID: {event.get('uid', 'N/A')[:50]}...")
+                            
+                            with col2:
+                                st.markdown("**事件描述:**")
+                                description = event.get('description', 'N/A')
+                                # 将 \n 转换为换行显示
+                                description_display = description.replace('\\n', '\n')
+                                st.text_area(
+                                    "内容:",
+                                    value=description_display,
+                                    height=200,
+                                    key=f"event_desc_{i}_{filename}",
+                                    disabled=True
+                                )
+                else:
+                    st.warning(f"没有找到包含 '{filter_keyword}' 的事件")
+            
+            with tab2:
+                show_events_statistics(events, content)
+            
+            with tab3:
+                show_raw_ics_content(content, filename)
+            
+            with tab4:
+                st.markdown(f"#### 📖 {selected_type} 事件详情")
+                
+                # 按日期分组显示
+                from collections import defaultdict
+                events_by_date = defaultdict(list)
+                
+                for event in events:
+                    start_time = event.get('start_time', '')
+                    if start_time:
+                        # 提取日期部分
+                        date_part = start_time.split('T')[0] if 'T' in start_time else start_time.split(' ')[0]
+                        events_by_date[date_part].append(event)
+                
+                # 按日期排序
+                sorted_dates = sorted(events_by_date.keys())
+                
+                for date_str in sorted_dates:
+                    date_events = events_by_date[date_str]
+                    with st.expander(f"📅 {date_str} ({len(date_events)} 个事件)", expanded=False):
+                        for event in date_events:
+                            st.markdown(f"**{event.get('summary', '未知事件')}**")
+                            st.text(f"时间: {event.get('start_time', 'N/A')} - {event.get('end_time', 'N/A')}")
+                            
+                            # 显示描述（格式化）
+                            description = event.get('description', '')
+                            if description:
+                                description_formatted = description.replace('\\n', '\n')
+                                with st.expander("查看详细描述"):
+                                    st.text(description_formatted)
+                            st.markdown("---")
+                
+        except Exception as e:
+            st.error(f"❌ 解析ICS文件失败: {e}")
+            import traceback
+            st.code(traceback.format_exc())
 
 def show_subscription_info():
     """显示订阅信息"""
