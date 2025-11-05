@@ -87,7 +87,7 @@ class NotificationTemplateManager:
                     'screen_operator': '待安排',
                     'camera_operator': '待安排',
                     'propresenter': '待安排',
-                    'video_editor': '靖铮'
+                    'video_editor': '待安排'
                 }
             },
             'sunday_reminder': {
@@ -98,7 +98,7 @@ class NotificationTemplateManager:
                     'screen_operator': '待安排',
                     'camera_operator': '待安排',
                     'propresenter': '待安排',
-                    'video_editor': '靖铮'
+                    'video_editor': '待安排'
                 }
             }
         }

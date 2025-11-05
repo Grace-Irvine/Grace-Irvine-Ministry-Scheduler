@@ -22,12 +22,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # 导入项目模块
 from src.models import MinistryAssignment, ServiceRole
-from src.data_cleaner import FocusedDataCleaner
-from src.template_manager import NotificationTemplateManager
-from src.dynamic_template_manager import DynamicTemplateManager
-from src.scheduler import GoogleSheetsExtractor, NotificationGenerator
-from src.email_sender import EmailSender, EmailRecipient
-from src.calendar_generator import generate_coordinator_calendar
+from src.multi_calendar_generator import generate_all_calendars, generate_media_team_calendar, generate_children_team_calendar, generate_weekly_overview_calendar
+from src.cloud_storage_manager import get_storage_manager
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -75,78 +71,169 @@ async def root():
     """根路径"""
     return {
         "message": "Grace Irvine Ministry Scheduler API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
             "update_ics": "/api/update-ics",
-            "calendar": "/calendar.ics"
+            "calendars": {
+                "media_team": "/calendars/media-team.ics",
+                "children_team": "/calendars/children-team.ics",
+                "weekly_overview": "/calendars/weekly-overview.ics"
+            },
+            "status": "/api/status"
         }
     }
 
 @app.post("/api/update-ics")
-async def update_ics_calendar(auth: bool = Depends(verify_auth_token)):
-    """更新ICS日历文件 - 由Cloud Scheduler定时调用"""
+async def update_ics_calendar(
+    auth: bool = Depends(verify_auth_token),
+    calendar_types: list = None
+):
+    """更新ICS日历文件 - 由Cloud Scheduler定时调用
+    
+    Args:
+        calendar_types: 要更新的日历类型列表，如果为None则更新所有类型
+                      可选值: ['media-team', 'children-team', 'weekly-overview']
+    """
     try:
         logger.info("开始更新ICS日历文件...")
         
-        # 直接使用generate_coordinator_calendar函数，它会自己处理数据获取
-        logger.info("生成负责人日历...")
+        # 生成所有日历
+        results = await asyncio.to_thread(generate_all_calendars)
         
-        # 在异步上下文中运行日历生成
-        success = await asyncio.to_thread(generate_coordinator_calendar)
-        
-        if success:
-            logger.info("ICS日历生成成功")
+        if not results['success']:
+            logger.error("部分ICS日历生成失败")
             return {
-                "status": "success",
-                "message": "ICS calendar updated successfully",
+                "status": "partial_success",
+                "message": "Some calendars failed to generate",
+                "results": results,
                 "timestamp": datetime.now().isoformat()
             }
-        else:
-            logger.error("ICS日历生成失败")
-            return {
-                "status": "error",
-                "message": "Failed to generate ICS calendar",
-                "timestamp": datetime.now().isoformat()
-            }
+        
+        # 保存生成的日历到存储
+        storage_manager = get_storage_manager()
+        saved_files = []
+        
+        for calendar_type, calendar_result in results['calendars'].items():
+            if calendar_result['success'] and calendar_result['content']:
+                filename = f"{calendar_type}.ics"
+                saved = await asyncio.to_thread(
+                    storage_manager.write_ics_calendar,
+                    calendar_result['content'],
+                    filename
+                )
+                if saved:
+                    saved_files.append(filename)
+                    logger.info(f"✅ 日历已保存: {filename}")
+        
+        logger.info(f"ICS日历生成成功，共保存 {len(saved_files)} 个文件")
+        return {
+            "status": "success",
+            "message": "ICS calendars updated successfully",
+            "calendars_generated": len(saved_files),
+            "files_saved": saved_files,
+            "results": results,
+            "timestamp": datetime.now().isoformat()
+        }
             
     except Exception as e:
         logger.error(f"更新ICS日历失败: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update ICS calendar: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update ICS calendars: {str(e)}")
 
-@app.get("/calendar.ics")
-async def serve_calendar():
-    """提供ICS日历文件下载"""
-    calendar_file = Path("calendars") / "grace_irvine_coordinator.ics"
+@app.get("/calendars/{calendar_type}.ics")
+async def serve_calendar(calendar_type: str):
+    """提供ICS日历文件下载
+    
+    Args:
+        calendar_type: 日历类型 (media-team, children-team, weekly-overview)
+    """
+    valid_types = ['media-team', 'children-team', 'weekly-overview']
+    
+    if calendar_type not in valid_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid calendar type. Valid types: {', '.join(valid_types)}"
+        )
+    
+    filename = f"{calendar_type}.ics"
+    calendar_file = Path("calendars") / filename
+    
+    # 如果本地文件不存在，尝试从GCS读取
+    if not calendar_file.exists():
+        try:
+            storage_manager = get_storage_manager()
+            if storage_manager and storage_manager.is_cloud_mode:
+                content = storage_manager.read_ics_calendar(filename)
+                if content:
+                    # 返回内容作为响应
+                    from fastapi.responses import Response
+                    return Response(
+                        content=content,
+                        media_type="text/calendar",
+                        headers={
+                            "Content-Disposition": f'attachment; filename="{filename}"'
+                        }
+                    )
+        except Exception as e:
+            logger.warning(f"从GCS读取日历失败: {e}")
     
     if not calendar_file.exists():
-        raise HTTPException(status_code=404, detail="Calendar file not found")
+        raise HTTPException(status_code=404, detail=f"Calendar file not found: {filename}")
     
     return FileResponse(
         path=str(calendar_file),
         media_type="text/calendar",
-        filename="grace_irvine_coordinator.ics"
+        filename=filename
     )
 
 @app.get("/api/status")
 async def get_service_status():
     """获取服务状态信息"""
-    calendar_file = Path("calendars") / "grace_irvine_coordinator.ics"
+    storage_manager = get_storage_manager()
+    calendar_types = ['media-team', 'children-team', 'weekly-overview']
     
     status = {
         "service": "Grace Irvine Ministry Scheduler API",
+        "version": "2.0.0",
         "timestamp": datetime.now().isoformat(),
-        "calendar_file_exists": calendar_file.exists(),
         "storage_mode": os.getenv("STORAGE_MODE", "local"),
         "project_id": os.getenv("GOOGLE_CLOUD_PROJECT", "not_set"),
-        "bucket": os.getenv("GCP_STORAGE_BUCKET", "not_set")
+        "bucket": os.getenv("GCP_STORAGE_BUCKET", "not_set"),
+        "data_source_bucket": os.getenv("DATA_SOURCE_BUCKET", "grace-irvine-ministry-data"),
+        "calendars": {}
     }
     
-    if calendar_file.exists():
-        stat = calendar_file.stat()
-        status["calendar_last_modified"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
-        status["calendar_size_bytes"] = stat.st_size
+    # 检查每个日历文件的状态
+    for calendar_type in calendar_types:
+        filename = f"{calendar_type}.ics"
+        calendar_file = Path("calendars") / filename
+        
+        calendar_status = {
+            "exists": False,
+            "size_bytes": 0,
+            "last_modified": None
+        }
+        
+        # 检查本地文件
+        if calendar_file.exists():
+            stat = calendar_file.stat()
+            calendar_status["exists"] = True
+            calendar_status["size_bytes"] = stat.st_size
+            calendar_status["last_modified"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+        else:
+            # 检查GCS文件
+            try:
+                if storage_manager and storage_manager.is_cloud_mode:
+                    content = storage_manager.read_ics_calendar(filename)
+                    if content:
+                        calendar_status["exists"] = True
+                        calendar_status["size_bytes"] = len(content.encode('utf-8'))
+                        calendar_status["source"] = "gcs"
+            except Exception as e:
+                logger.warning(f"检查GCS日历状态失败: {e}")
+        
+        status["calendars"][calendar_type] = calendar_status
     
     return status
 
