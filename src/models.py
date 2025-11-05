@@ -33,20 +33,8 @@ class MinistryAssignment:
     video_director: Optional[str] = None      # 导播/摄影
     propresenter_play: Optional[str] = None   # ProPresenter播放
     propresenter_update: Optional[str] = None # ProPresenter更新
-    video_editor: Optional[str] = "靖铮"      # 视频剪辑（通常固定）
-    
-    # 扩展字段（向后兼容）
-    screen_operator: Optional[str] = field(init=False, default=None)  # 屏幕操作（已合并到ProPresenter）
-    camera_operator: Optional[str] = field(init=False, default=None)  # 摄像操作（已合并到video_director）
-    propresenter: Optional[str] = field(init=False, default=None)     # ProPresenter（已分离为play和update）
-    
-    def __post_init__(self):
-        """初始化后处理，确保向后兼容性"""
-        # 向后兼容字段映射
-        self.screen_operator = self.propresenter_play
-        self.camera_operator = self.video_director
-        self.propresenter = self.propresenter_play or self.propresenter_update
-    
+    video_editor: Optional[str] = None        # 视频剪辑
+        
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
         return {
@@ -146,7 +134,7 @@ class MinistryAssignment:
             video_director=data.get('video_director'),
             propresenter_play=data.get('propresenter_play'),
             propresenter_update=data.get('propresenter_update'),
-            video_editor=data.get('video_editor', '靖铮')
+            video_editor=data.get('video_editor',)
         )
     
     @classmethod
@@ -158,7 +146,7 @@ class MinistryAssignment:
             video_director=schedule.video_director,
             propresenter_play=schedule.propresenter_play,
             propresenter_update=schedule.propresenter_update,
-            video_editor="靖铮"
+            video_editor=schedule.video_editor
         )
     
     @classmethod
@@ -170,7 +158,7 @@ class MinistryAssignment:
             video_director=getattr(assignment, 'camera_operator', None) or getattr(assignment, 'video_director', None),
             propresenter_play=getattr(assignment, 'propresenter', None) or getattr(assignment, 'screen_operator', None),
             propresenter_update=getattr(assignment, 'propresenter_update', None),
-            video_editor=getattr(assignment, 'video_editor', '靖铮')
+            video_editor=getattr(assignment, 'video_editor', None)
         )
 
 @dataclass 
@@ -221,7 +209,7 @@ def create_ministry_assignment(
     video_director: str = None,
     propresenter_play: str = None,
     propresenter_update: str = None,
-    video_editor: str = "靖铮"
+    video_editor: str = None
 ) -> MinistryAssignment:
     """创建事工安排实例的便捷函数"""
     return MinistryAssignment(

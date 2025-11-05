@@ -1,0 +1,53 @@
+{
+  "volunteers": [
+    {
+      "service_date": "2025-11-09",
+      "technical": {
+        "audio": "音控人员",
+        "video": "导播/摄影",
+        "propresenter_play": "ProPresenter播放",
+        "propresenter_update": "ProPresenter更新",
+        "video_editor": "视频剪辑"
+      },
+      "education": {
+        "friday_child_ministry": "周五老师",
+        "sunday_child_assistant_1": "周日助教1",
+        "sunday_child_assistant_2": "周日助教2",
+        "sunday_child_assistant_3": "周日助教3"
+      },
+      "worship": {
+        "worship_lead": "敬拜带领",
+        "worship_team_1": "敬拜同工1",
+        "worship_team_2": "敬拜同工2",
+        "pianist": "司琴"
+      }
+    },
+    {
+      "service_date": "2025-11-16",
+      "technical": {
+        "audio": "音控人员2",
+        "video": "导播/摄影2",
+        "propresenter_play": "ProPresenter播放2",
+        "propresenter_update": "ProPresenter更新2",
+        "video_editor": "视频剪辑2"
+      },
+      "education": {
+        "friday_child_ministry": "周五老师2",
+        "sunday_child_assistant_1": "周日助教1-2",
+        "sunday_child_assistant_2": "周日助教2-2",
+        "sunday_child_assistant_3": "周日助教3-2"
+      },
+      "worship": {
+        "worship_lead": "敬拜带领2",
+        "worship_team_1": "敬拜同工1-2",
+        "worship_team_2": "敬拜同工2-2",
+        "pianist": "司琴2"
+      }
+    }
+  ],
+  "metadata": {
+    "last_updated": "2025-11-04T21:00:00Z",
+    "source": "test_data"
+  }
+}
+

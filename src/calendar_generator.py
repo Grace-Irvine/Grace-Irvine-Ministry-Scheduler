@@ -17,7 +17,7 @@ from datetime import datetime, date, timedelta
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data_cleaner import FocusedDataCleaner
+from src.json_data_reader import get_json_data_reader  # 从 GCS 读取 JSON 数据
 from src.dynamic_template_manager import DynamicTemplateManager
 from dotenv import load_dotenv
 
@@ -102,21 +102,20 @@ def create_ics_event(uid: str, summary: str, description: str,
     return "\n".join(event_lines)
 
 def generate_coordinator_calendar():
-    """生成负责人日历"""
+    """生成负责人日历（已弃用，请使用 multi_calendar_generator）"""
     try:
         print("📅 生成负责人日历...")
+        print("⚠️  注意：此函数已弃用，建议使用 multi_calendar_generator.generate_all_calendars()")
         
         # 加载环境变量
         load_dotenv()
         
-        # 获取数据
-        cleaner = FocusedDataCleaner()
-        raw_df = cleaner.download_data()
-        focused_df = cleaner.extract_focused_columns(raw_df)
-        schedules = cleaner.clean_focused_data(focused_df)
+        # 从 GCS bucket 读取已清洗的数据
+        data_reader = get_json_data_reader()
+        schedules = data_reader.get_service_schedule()
         
         if not schedules:
-            print("❌ 未找到排程数据")
+            print("❌ 未找到排程数据（从 GCS bucket 读取）")
             return False
         
         # 使用动态模板管理器

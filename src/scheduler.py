@@ -191,7 +191,7 @@ class GoogleSheetsExtractor:
                     video_director=self._clean_name(row[role_mappings.get('导播/摄影', 0)]) if '导播/摄影' in role_mappings else None,
                     propresenter_play=self._clean_name(row[role_mappings.get('ProPresenter播放', 0)]) if 'ProPresenter播放' in role_mappings else None,
                     propresenter_update=self._clean_name(row[role_mappings.get('ProPresenter更新', 0)]) if 'ProPresenter更新' in role_mappings else None,
-                    video_editor="靖铮"  # 固定值
+                    video_editor=self._clean_name(row[role_mappings.get('视频剪辑', 0)]) if '视频剪辑' in role_mappings else None
                 )
                 
                 # 只添加有实际安排的记录
