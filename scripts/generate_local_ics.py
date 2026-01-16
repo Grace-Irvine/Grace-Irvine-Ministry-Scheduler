@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 本地 ICS 日历生成脚本
-生成所有类型的 ICS 日历文件并保存到本地 calendars/ 目录
+生成所有类型的 ICS 日历文件并保存到本地 calendars/ 目录（媒体部、儿童部）
 """
 
 import os
@@ -43,8 +43,7 @@ def main():
         # 保存文件
         filename_map = {
             'media-team': 'media-team.ics',
-            'children-team': 'children-team.ics',
-            'weekly-overview': 'weekly-overview.ics'
+            'children-team': 'children-team.ics'
         }
         
         saved_files = []

@@ -143,18 +143,6 @@ class ICSNotificationConfigManager:
                             "reminder_minutes": 30
                         }
                     }
-                },
-                "weekly-overview": {
-                    "enabled": True,
-                    "notifications": {
-                        "monday_overview": {
-                            "enabled": True,
-                            "relative_to_sunday": -6,
-                            "time": "20:00",
-                            "duration_minutes": 60,
-                            "reminder_minutes": 60
-                        }
-                    }
                 }
             }
         }
@@ -246,7 +234,7 @@ class ICSNotificationConfigManager:
         """获取通知时间配置
         
         Args:
-            calendar_type: 日历类型 (media-team, children-team, weekly-overview)
+            calendar_type: 日历类型 (media-team, children-team)
             notification_type: 通知类型 (wednesday_confirmation, saturday_reminder, monday_overview)
             
         Returns:

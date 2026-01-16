@@ -323,7 +323,8 @@ class CloudStorageManager:
         
         sync_files = [
             "templates/dynamic_templates.json",
-            "calendars/grace_irvine_coordinator.ics"
+            "calendars/media-team.ics",
+            "calendars/children-team.ics"
         ]
         
         results = {}
@@ -483,11 +484,11 @@ class CloudStorageManager:
         """写入经文配置"""
         return self.write_file("templates/scripture_sharing.json", config)
     
-    def read_ics_calendar(self, calendar_name: str = "grace_irvine_coordinator.ics") -> Optional[str]:
+    def read_ics_calendar(self, calendar_name: str = "media-team.ics") -> Optional[str]:
         """读取ICS日历文件"""
         return self.read_file(f"calendars/{calendar_name}", "text")
     
-    def write_ics_calendar(self, calendar_content: str, calendar_name: str = "grace_irvine_coordinator.ics") -> bool:
+    def write_ics_calendar(self, calendar_content: str, calendar_name: str = "media-team.ics") -> bool:
         """写入ICS日历文件"""
         return self.write_file(f"calendars/{calendar_name}", calendar_content)
     
@@ -518,7 +519,7 @@ class CloudStorageManager:
         
         return sorted(calendar_files)
     
-    def get_public_calendar_url(self, calendar_name: str = "grace_irvine_coordinator.ics") -> str:
+    def get_public_calendar_url(self, calendar_name: str = "media-team.ics") -> str:
         """获取公开的日历订阅URL"""
         if self.is_cloud_mode and self.storage_client:
             # 云端环境返回GCS公开URL
@@ -540,7 +541,8 @@ class CloudStorageManager:
         # 检查重要文件状态
         important_files = [
             "templates/dynamic_templates.json",
-            "calendars/grace_irvine_coordinator.ics"
+            "calendars/media-team.ics",
+            "calendars/children-team.ics"
         ]
         
         for file_path in important_files:

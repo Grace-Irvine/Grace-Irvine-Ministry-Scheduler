@@ -500,10 +500,10 @@ def test_dynamic_templates():
         return False
     
     # 测试模板渲染
-    from src.data_cleaner import MinistrySchedule
+    from src.models import MinistryAssignment
     from datetime import date, timedelta
     
-    test_schedule = MinistrySchedule(
+    test_schedule = MinistryAssignment(
         date=date.today() + timedelta(days=7),
         audio_tech="Jimmy",
         video_director="靖铮",

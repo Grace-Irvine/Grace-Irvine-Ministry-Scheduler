@@ -4,7 +4,7 @@
 
 ### 1. 系统架构设计
 - ✅ 设计了从 GCS JSON 数据源读取数据的新架构
-- ✅ 设计了支持3种 ICS 日历类型的系统
+- ✅ 设计了支持2种 ICS 日历类型的系统
 - ✅ 设计了灵活的通知时间配置系统
 - ✅ 设计了 GCS bucket 文件架构
 
@@ -18,7 +18,6 @@
   - `get_service_schedule()` - 获取服事安排
   - `get_media_team_volunteers()` - 获取媒体部同工数据
   - `get_children_team_volunteers()` - 获取儿童部同工数据
-  - `get_weekly_overview()` - 获取每周全部事工概览
 
 #### 2.2 ICS 通知配置管理器 (`src/ics_notification_config.py`)
 - ✅ 支持灵活的 ICS 通知时间配置
@@ -29,7 +28,6 @@
 #### 2.3 多类型 ICS 生成器 (`src/multi_calendar_generator.py`)
 - ✅ `generate_media_team_calendar()` - 生成媒体部服事日历
 - ✅ `generate_children_team_calendar()` - 生成儿童部服事日历
-- ✅ `generate_weekly_overview_calendar()` - 生成每周全部事工概览日历
 - ✅ `generate_all_calendars()` - 生成所有类型的日历
 
 #### 2.4 API 服务更新 (`start_api.py`)
@@ -56,8 +54,7 @@ grace-irvine-ministry-data/
 grace-irvine-ministry-scheduler/
 ├── calendars/
 │   ├── media-team.ics                 # 媒体部日历
-│   ├── children-team.ics              # 儿童部日历
-│   └── weekly-overview.ics             # 每周概览日历
+│   └── children-team.ics              # 儿童部日历
 ├── configs/
 │   └── ics_notification_config.json   # ICS 通知配置
 └── logs/
@@ -79,14 +76,6 @@ grace-irvine-ministry-scheduler/
   - 周三确认通知（主日前4天，默认20:00）
   - 周六提醒通知（主日前1天，默认20:00）
 - **包含内容**: 主日学老师、助教、敬拜带领
-
-### 3. 每周全部事工概览日历 (`weekly-overview.ics`)
-- **目标用户**: 事工协调人/负责人
-- **通知时间**: 
-  - 周一全部事工通知（主日前6天，默认20:00）
-- **包含内容**: 
-  - 所有证道信息（主题、讲员、经文、经文内容）
-  - 所有服事安排（媒体部、儿童部、敬拜团队等）
 
 ## ⚙️ 配置系统
 
@@ -117,8 +106,7 @@ grace-irvine-ministry-scheduler/
         }
       }
     },
-    "children-team": { ... },
-    "weekly-overview": { ... }
+    "children-team": { ... }
   }
 }
 ```
@@ -127,7 +115,6 @@ grace-irvine-ministry-scheduler/
 - **relative_to_sunday**: 相对于主日（周日）的天数偏移
   - `-4` = 周三（主日前4天）
   - `-1` = 周六（主日前1天）
-  - `-6` = 周一（主日前6天）
 - **time**: 通知时间（24小时制，格式：`HH:MM`）
 - **duration_minutes**: 事件持续时间（分钟）
 - **reminder_minutes**: 提醒提前时间（分钟）
@@ -141,7 +128,7 @@ Headers:
   X-Auth-Token: <token>
 Body (可选):
   {
-    "calendar_types": ["media-team", "children-team", "weekly-overview"],
+    "calendar_types": ["media-team", "children-team"],
     "force_refresh": false
   }
 ```
@@ -149,7 +136,7 @@ Body (可选):
 ### 获取 ICS 日历
 ```
 GET /calendars/{calendar_type}.ics
-calendar_type: media-team | children-team | weekly-overview
+calendar_type: media-team | children-team
 ```
 
 ### 获取系统状态

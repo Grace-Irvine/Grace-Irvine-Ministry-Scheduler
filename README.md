@@ -1,6 +1,6 @@
-# Grace Irvine Ministry Scheduler v2.0 - 简化版
+# Grace Irvine Ministry Scheduler - ICS 专用版
 
-恩典尔湾长老教会事工排程管理系统 - 简化架构版本
+仅保留从 **GCS 清洗 JSON** 生成 **ICS 通知日历** 的功能（周三确认、周六提醒）。
 
 ## 🚀 快速开始
 
@@ -10,158 +10,62 @@ pip install -r requirements.txt
 ```
 
 ### 2. 配置环境变量
-创建 `.env` 文件：
+复制 `env.example` 为 `.env` 并按需调整：
 ```bash
-# Google Sheets配置
-GOOGLE_SPREADSHEET_ID=your_spreadsheet_id_here
-
-# 邮件配置（可选）
-SENDER_EMAIL=your_email@example.com
-EMAIL_PASSWORD=your_app_password
+DATA_SOURCE_BUCKET=grace-irvine-ministry-data
+GOOGLE_CLOUD_PROJECT=ai-for-god
+GCP_STORAGE_BUCKET=grace-irvine-ministry-scheduler
+STORAGE_MODE=local
 ```
 
-### 3. 启动应用
+### 3. 生成 ICS（日历文件）
 ```bash
-# 使用默认设置启动
+python3 scripts/generate_local_ics.py
+```
+
+或通过 UI：
+```bash
 python start.py
-
-# 或指定端口
-python start.py --port 8080
 ```
 
-## 📋 主要功能
+## 📅 输出日历
 
-### ✅ 已实现的功能
-- ✅ **数据获取**: 从Google Sheets读取排班数据
-- ✅ **数据清洗**: 自动清理和验证数据
-- ✅ **模板生成**: 生成微信群通知模板
-  - 周三确认通知
-  - 周六提醒通知  
-  - 月度总览通知
-- ✅ **邮件发送**: 发送通知模板到邮箱
-- ✅ **ICS日历**: 生成可订阅的日历文件
-- ✅ **自动更新**: 每4小时自动从Google Sheets更新ICS（GCP Cloud Scheduler）
-- ✅ **Web界面**: 直观的管理界面
-- ✅ **云端部署**: 支持Google Cloud Run部署
+- `media-team.ics` - 媒体部通知（周三确认 / 周六提醒）
+- `children-team.ics` - 儿童部通知（周三确认 / 周六提醒）
 
-### 🔧 架构改进
-- ✅ **统一入口点**: 只需运行 `python start.py`
-- ✅ **简化部署**: 单一应用，易于维护
-- ✅ **内置服务**: 集成静态文件服务
-- ✅ **清晰结构**: 删除重复代码
-
-## 🌐 Web界面功能
-
-访问 `http://localhost:8501` 使用以下功能：
-
-### 📊 数据概览
-- 查看排程数据统计
-- 显示近期排程安排
-- 数据质量监控
-
-### 📝 模板生成器
-- 生成三种通知模板
-- 保存模板到文件
-- 发送模板到邮箱
-
-### 📅 日历管理
-- 生成ICS日历文件
-- 查看日历状态
-- 获取订阅链接
-
-### ⚙️ 系统设置
-- 查看配置信息
-- 清除缓存
-- 文件状态监控
-
-## 📅 ICS日历订阅
-
-生成的日历文件：
-- `grace_irvine_coordinator.ics` - 负责人日历（包含通知提醒）
-- ~~`grace_irvine_workers.ics`~~ - 同工日历（留到下阶段开发）
-
-### 订阅方法：
-1. **Google Calendar**: 左侧"+" → "从URL添加" → 粘贴链接
-2. **Apple Calendar**: "文件" → "新建日历订阅" → 输入URL  
-3. **Outlook**: "添加日历" → "从Internet订阅" → 输入URL
-
-## 🔧 开发和部署
-
-### 本地开发
-```bash
-# 启动开发环境
-python3 start.py
-
-# 启动时跳过环境检查
-python3 start.py --skip-checks
-
-# 手动生成ICS日历文件
-python3 generate_calendars.py
-```
-
-### Docker部署
-```bash
-# 构建镜像
-docker build -t grace-scheduler .
-
-# 运行容器
-docker run -p 8080:8080 grace-scheduler
-```
-
-### Google Cloud Run部署
-```bash
-# 部署到Cloud Run
-python deploy_to_cloud_run.py
-
-# 设置自动更新（每4小时）
-./cloud_scheduler_setup.sh
-```
-
-详细说明请参考 [自动更新设置指南](docs/AUTO_UPDATE_SETUP.md)
-
-## 📁 项目结构
+## 📁 目录结构（精简后）
 
 ```
 Grace-Irvine-Ministry-Scheduler/
-├── start.py                    # 🚀 统一启动入口
-├── app_unified.py             # 📱 统一Web应用
-├── generate_calendars.py      # 📅 日历生成启动器
-├── src/                       # 📦 核心模块
-│   ├── data_cleaner.py       # 🧹 数据清洗
-│   ├── scheduler.py          # 📅 排程处理
-│   ├── template_manager.py   # 📝 模板管理
-│   ├── email_sender.py       # 📧 邮件发送
-│   └── calendar_generator.py # 🗓️ ICS日历生成器
-├── configs/                   # ⚙️ 配置文件
-├── templates/                 # 📄 模板文件
-├── calendars/                 # 📅 ICS文件
-├── data/                      # 📊 数据文件
-└── requirements.txt           # 📋 依赖包
+├── app_unified.py                # Streamlit ICS 管理界面
+├── start.py                      # 启动脚本
+├── start_api.py                  # API 服务（可选）
+├── src/
+│   ├── multi_calendar_generator.py
+│   ├── dynamic_template_manager.py
+│   ├── json_data_reader.py
+│   ├── scripture_manager.py
+│   ├── cloud_storage_manager.py
+│   └── ics_notification_config.py
+├── configs/
+│   └── ics_notification_config.json
+├── templates/
+│   ├── dynamic_templates.json
+│   └── scripture_sharing.json
+├── calendars/                    # 生成的 ICS 输出
+└── scripts/
+    └── generate_local_ics.py
 ```
 
-## ❓ 常见问题
+## 🧪 测试
 
-### Q: 如何更新日历文件？
-A: 在Web界面的"日历管理"页面点击"生成/更新日历文件"按钮
+```bash
+python scripts/test_ics_generation.py
+```
 
-### Q: 邮件发送失败怎么办？
-A: 检查 `.env` 文件中的邮件配置，确保使用应用专用密码
+## 📚 文档
 
-### Q: 如何添加新的通知模板？
-A: 修改 `templates/notification_templates.yaml` 文件
+- `docs/LOCAL_ICS_GENERATION.md`
+- `docs/NEW_ICS_ARCHITECTURE.md`
+- `docs/NEW_ICS_IMPLEMENTATION.md`
 
-### Q: 数据加载失败怎么办？
-A: 检查Google Sheets是否公开访问，确认Spreadsheet ID正确
-
-## 📞 技术支持
-
-如有问题，请检查：
-1. 环境变量配置是否正确
-2. 网络连接是否正常
-3. Google Sheets是否可访问
-4. 依赖包是否完整安装
-
----
-
-**Grace Irvine Ministry Scheduler v2.0** - 简化版本
-Made with ❤️ for Grace Irvine Presbyterian Church

@@ -15,10 +15,9 @@ python3 scripts/generate_local_ics.py
 
 脚本会：
 1. 从 `test_data/` 目录读取测试数据（如果 GCS 不可用）
-2. 生成三种类型的 ICS 文件：
-   - `media-team.ics` - 媒体部服事日历
-   - `children-team.ics` - 儿童部服事日历
-   - `weekly-overview.ics` - 每周全部事工概览
+2. 生成两种类型的 ICS 文件：
+   - `media-team.ics` - 媒体部服事日历（周三、周六通知）
+   - `children-team.ics` - 儿童部服事日历（周三、周六通知）
 3. 保存到 `calendars/` 目录
 
 ### 方法 2: 在前端生成
@@ -126,7 +125,6 @@ streamlit run app_unified.py
 2. **选择 ICS 类型**:
    - 🎤 媒体部服事日历 (`media-team.ics`)
    - 👶 儿童部服事日历 (`children-team.ics`)
-   - 📋 每周全部事工概览 (`weekly-overview.ics`)
 
 3. **查看内容**:
    - 📅 事件列表 - 显示所有事件，支持搜索和筛选
@@ -142,7 +140,6 @@ streamlit run app_unified.py
 calendars/
 ├── media-team.ics          # 媒体部服事日历
 ├── children-team.ics       # 儿童部服事日历
-└── weekly-overview.ics     # 每周全部事工概览
 ```
 
 ## 💡 使用技巧

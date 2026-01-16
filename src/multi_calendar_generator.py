@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 多类型 ICS 日历生成器
-支持生成媒体部、儿童部、每周概览三种类型的 ICS 日历
+支持生成媒体部、儿童部两种类型的 ICS 日历
 """
 
 import os
@@ -16,10 +16,9 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.json_data_reader import get_json_data_reader
-from src.ics_notification_config import get_config_manager, NotificationTiming
+from src.ics_notification_config import get_config_manager
 from src.models import MinistryAssignment
 from src.dynamic_template_manager import DynamicTemplateManager
-from src.scripture_manager import get_scripture_manager
 
 logger = logging.getLogger(__name__)
 
@@ -222,80 +221,7 @@ def format_children_team_summary(children: dict, schedule_date: date, event_type
         return f"儿童部{event_type}通知 ({schedule_date.month}/{schedule_date.day})"
 
 
-def format_weekly_overview_summary(overview_data: dict, sunday_date: date) -> str:
-    """格式化每周概览事件标题，包含证道信息和主要服事人员
-    
-    Args:
-        overview_data: 每周概览数据字典
-        sunday_date: 主日日期
-    
-    Returns:
-        格式化后的标题
-    """
-    sermon = overview_data.get('sermon', {})
-    volunteers = overview_data.get('volunteers', {})
-    
-    title_parts = []
-    
-    # 添加证道信息
-    if sermon.get('title'):
-        title_parts.append(f"证道:{sermon['title']}")
-    if sermon.get('speaker'):
-        title_parts.append(f"讲员:{sermon['speaker']}")
-    
-    # 添加主要服事人员（每个部门取第一个岗位）
-    role_map = {
-        'audio': '音控',
-        'audio_tech': '音控',
-        'sound_control': '音控',
-        'video': '导播',
-        'video_director': '导播',
-        'director': '导播',
-        'propresenter_play': '播放',
-        'propresenter_update': '更新',
-        'teacher': '老师',
-        'sunday_child_teacher': '老师',
-        'assistant': '助教',
-        'sunday_child_assistant_1': '助教',
-        'worship_lead': '敬拜',
-        'worship': '敬拜',
-        'leader': '敬拜',
-        'lead': '敬拜',
-        'pianist': '司琴'
-    }
-    
-    for dept_key, dept_roles in volunteers.items():
-        if not isinstance(dept_roles, dict):
-            continue
-        
-        # 取第一个非空岗位
-        for role_key, role_value in dept_roles.items():
-            if not role_value:
-                continue
-            
-            # 检查是否为有效值
-            is_valid = False
-            if isinstance(role_value, list):
-                is_valid = len(role_value) > 0 and any(v for v in role_value if v)
-            elif isinstance(role_value, str):
-                is_valid = bool(role_value.strip())
-            else:
-                is_valid = bool(role_value)
-            
-            if is_valid:
-                role_display = role_map.get(role_key, role_key.replace('_', ' '))
-                # 使用 extract_person_name 提取实际人名，过滤占位符文本
-                person = extract_person_name(role_value)
-                
-                if person:
-                    title_parts.append(f"{role_display}:{person}")
-                    break  # 每个部门只取一个岗位
-    
-    if title_parts:
-        summary_text = " | ".join(title_parts[:4])  # 最多显示4个信息，避免标题过长
-        return f"每周事工通知 ({sunday_date.month}/{sunday_date.day}) - {summary_text}"
-    else:
-        return f"每周事工通知 ({sunday_date.month}/{sunday_date.day})"
+ 
 
 
 def generate_media_team_calendar() -> Optional[str]:
@@ -324,9 +250,8 @@ def generate_media_team_calendar() -> Optional[str]:
             logger.warning("媒体部日历未启用")
             return None
         
-        # 获取模板管理器和经文管理器
+        # 获取模板管理器
         template_manager = DynamicTemplateManager()
-        scripture_manager = get_scripture_manager()
         
         # 创建 ICS 内容
         ics_lines = [
@@ -597,6 +522,7 @@ def generate_children_team_calendar() -> Optional[str]:
             if schedule_date < cutoff_date:
                 continue
             
+            volunteers = schedule_data.get('volunteers', {})
             # 动态获取儿童部数据（支持 education 或 children 部门）
             children = volunteers.get('education') or volunteers.get('children', {})
             
@@ -780,217 +706,6 @@ def generate_children_team_calendar() -> Optional[str]:
         return None
 
 
-def generate_weekly_overview_calendar() -> Optional[str]:
-    """生成每周全部事工概览日历
-    
-    Returns:
-        ICS 日历内容字符串，如果失败返回 None
-    """
-    try:
-        logger.info("📅 生成每周全部事工概览日历...")
-        
-        # 获取数据读取器
-        data_reader = get_json_data_reader()
-        config_manager = get_config_manager()
-        
-        # 获取完整数据
-        weekly_overviews = data_reader.get_weekly_overview()
-        
-        if not weekly_overviews:
-            logger.warning("未找到每周概览数据")
-            return None
-        
-        # 获取配置
-        calendar_config = config_manager.config.get_calendar_config('weekly-overview')
-        if not calendar_config or not calendar_config.enabled:
-            logger.warning("每周概览日历未启用")
-            return None
-        
-        # 获取模板管理器和经文管理器
-        template_manager = DynamicTemplateManager()
-        scripture_manager = get_scripture_manager()
-        
-        # 创建 ICS 内容
-        ics_lines = [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//Grace Irvine Ministry Scheduler//Weekly Overview Calendar//CN",
-            "CALSCALE:GREGORIAN",
-            "METHOD:PUBLISH",
-            "X-WR-CALNAME:Grace Irvine 每周全部事工概览",
-            "X-WR-CALDESC:每周全部事工安排概览（包含证道和所有服事）",
-            "X-WR-TIMEZONE:America/Los_Angeles",
-            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        ]
-        
-        today = date.today()
-        cutoff_date = today - timedelta(days=28)  # 保留过去4周
-        events_created = 0
-        
-        for overview_data in weekly_overviews:
-            sunday_date = overview_data['date']
-            
-            if sunday_date < cutoff_date:
-                continue
-            
-            # 周一全部事工通知
-            monday_config = calendar_config.get_notification('monday_overview')
-            if monday_config:
-                try:
-                    event_date = calculate_event_date(sunday_date, monday_config.relative_to_sunday)
-                    
-                    if event_date >= today - timedelta(days=7):
-                        # 获取经文分享
-                        scripture_sharing = ""
-                        try:
-                            current_scripture = scripture_manager.get_scripture_by_date(sunday_date)
-                            if current_scripture:
-                                scripture_sharing = scripture_manager.format_scripture_for_template(current_scripture)
-                        except Exception as e:
-                            logger.warning(f"获取经文分享失败: {e}")
-                        
-                        # 生成通知内容
-                        description_lines = [
-                            f"主日日期: {sunday_date.strftime('%Y-%m-%d')}",
-                            "",
-                            "=== 证道信息 ===",
-                        ]
-                        
-                        sermon = overview_data.get('sermon', {})
-                        if sermon:
-                            # 参考: https://github.com/Grace-Irvine/Grace-Irvine-Ministry-Clean/blob/main/config/config.json
-                            if sermon.get('title'):
-                                description_lines.append(f"讲道标题: {sermon['title']}")
-                            if sermon.get('speaker'):
-                                description_lines.append(f"讲员: {sermon['speaker']}")
-                            if sermon.get('reading'):
-                                description_lines.append(f"读经: {sermon['reading']}")
-                            if sermon.get('series'):
-                                description_lines.append(f"讲道系列: {sermon['series']}")
-                            if sermon.get('scripture'):
-                                description_lines.append(f"经文: {sermon['scripture']}")
-                            if sermon.get('scripture_text'):
-                                description_lines.append(f"经文内容: {sermon['scripture_text']}")
-                        
-                        # 添加经文分享
-                        if scripture_sharing:
-                            description_lines.append("")
-                            description_lines.append("=== 经文分享 ===")
-                            description_lines.append(scripture_sharing)
-                        
-                        description_lines.append("")
-                        description_lines.append("=== 服事安排 ===")
-                        
-                        volunteers = overview_data.get('volunteers', {})
-                        
-                        # 动态提取所有部门和岗位，不硬编码部门名称
-                        # 部门名称映射（可选，用于显示友好的中文名称）
-                        dept_name_map = {
-                            'technical': '媒体部',
-                            'media': '媒体部',
-                            'education': '儿童部',
-                            'children': '儿童部',
-                            'worship': '敬拜团队',
-                            'outreach': '外展联络',
-                            'sermon': '证道'
-                        }
-                        
-                        # 岗位名称映射（可选，用于显示友好的中文名称）
-                        # 如果JSON中没有岗位的中文名称，可以使用这个映射
-                        role_name_map = {
-                            'audio': '音控',
-                            'sound_control': '音控',
-                            'video': '导播/摄影',
-                            'director': '导播/摄影',
-                            'propresenter_play': 'ProPresenter播放',
-                            'propresenter_update': 'ProPresenter更新',
-                            'video_editor': '视频剪辑',
-                            'worship_lead': '敬拜带领',
-                            'leader': '敬拜带领',
-                            'lead': '敬拜带领',
-                            'pianist': '司琴',
-                            'friday_child_ministry': '周五老师',
-                            'teacher': '主日学老师',
-                            'sunday_child_teacher': '主日学老师',
-                            'sunday_child_assistant_1': '周日助教1',
-                            'sunday_child_assistant_2': '周日助教2',
-                            'sunday_child_assistant_3': '周日助教3',
-                            'assistant': '助教'
-                        }
-                        
-                        # 遍历所有部门
-                        for dept_key, dept_roles in volunteers.items():
-                            if not dept_roles or not isinstance(dept_roles, dict):
-                                continue
-                            
-                            # 获取部门显示名称
-                            dept_display_name = dept_name_map.get(dept_key, dept_key)
-                            description_lines.append("")
-                            description_lines.append(f"{dept_display_name}:")
-                            
-                            # 遍历该部门的所有岗位
-                            for role_key, role_value in dept_roles.items():
-                                if not role_value:
-                                    continue
-                                
-                                # 获取岗位显示名称
-                                role_display_name = role_name_map.get(role_key, role_key.replace('_', ' '))
-                                
-                                # 使用 extract_person_name 提取实际人名，过滤占位符文本
-                                person_name = extract_person_name(role_value)
-                                if not person_name:
-                                    continue  # 跳过占位符文本
-                                
-                                # 处理岗位值
-                                if isinstance(role_value, list):
-                                    # 如果是列表，显示所有值
-                                    person_names = []
-                                    for val in role_value:
-                                        name = extract_person_name(val)
-                                        if name:
-                                            person_names.append(name)
-                                    if person_names:
-                                        if len(person_names) > 1:
-                                            for i, name in enumerate(person_names, 1):
-                                                description_lines.append(f"  {role_display_name}{i}: {name}")
-                                        else:
-                                            description_lines.append(f"  {role_display_name}: {person_names[0]}")
-                                else:
-                                    # 直接显示提取的人名
-                                    description_lines.append(f"  {role_display_name}: {person_name}")
-                        
-                        description = "\n".join(description_lines)
-                        
-                        # 计算时间
-                        start_dt = datetime.combine(event_date, monday_config.to_time())
-                        end_dt = start_dt + timedelta(minutes=monday_config.duration_minutes)
-                        
-                        # 创建事件
-                        summary = format_weekly_overview_summary(overview_data, sunday_date)
-                        event_ics = create_ics_event(
-                            uid=f"weekly_monday_{event_date.strftime('%Y%m%d')}@graceirvine.org",
-                            summary=summary,
-                            description=description,
-                            start_dt=start_dt,
-                            end_dt=end_dt,
-                            reminder_trigger=monday_config.to_ics_trigger()
-                        )
-                        ics_lines.append(event_ics)
-                        events_created += 1
-                except Exception as e:
-                    logger.error(f"创建周一事件失败: {e}")
-        
-        ics_lines.append("END:VCALENDAR")
-        ics_content = "\n".join(ics_lines)
-        
-        logger.info(f"✅ 每周概览日历生成完成: {events_created} 个事件")
-        return ics_content
-        
-    except Exception as e:
-        logger.error(f"❌ 生成每周概览日历失败: {e}")
-        return None
-
-
 def generate_all_calendars() -> Dict[str, Any]:
     """生成所有类型的 ICS 日历
     
@@ -1017,14 +732,6 @@ def generate_all_calendars() -> Dict[str, Any]:
         'success': children_ics is not None,
         'content': children_ics,
         'events': children_ics.count('BEGIN:VEVENT') if children_ics else 0
-    }
-    
-    # 生成每周概览日历
-    overview_ics = generate_weekly_overview_calendar()
-    results['calendars']['weekly-overview'] = {
-        'success': overview_ics is not None,
-        'content': overview_ics,
-        'events': overview_ics.count('BEGIN:VEVENT') if overview_ics else 0
     }
     
     # 检查是否有失败的
