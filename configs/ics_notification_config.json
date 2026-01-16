@@ -37,18 +37,6 @@
           "reminder_minutes": 30
         }
       }
-    },
-    "weekly-overview": {
-      "enabled": true,
-      "notifications": {
-        "monday_overview": {
-          "enabled": true,
-          "relative_to_sunday": -6,
-          "time": "09:00",
-          "duration_minutes": 60,
-          "reminder_minutes": 30
-        }
-      }
     }
   }
 }

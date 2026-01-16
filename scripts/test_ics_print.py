@@ -18,8 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.json_data_reader import get_json_data_reader
 from src.multi_calendar_generator import (
     generate_media_team_calendar,
-    generate_children_team_calendar,
-    generate_weekly_overview_calendar
+    generate_children_team_calendar
 )
 from src.ics_notification_config import get_config_manager
 from dotenv import load_dotenv
@@ -119,12 +118,6 @@ def test_config():
         saturday_config = config_manager.get_notification_timing('media-team', 'saturday_reminder')
         if saturday_config:
             print(f"      周六提醒: {saturday_config.time_str}, 相对主日 {saturday_config.relative_to_sunday} 天")
-        
-        # 显示每周概览配置
-        print("\n   📅 每周概览配置:")
-        overview_config = config_manager.get_notification_timing('weekly-overview', 'monday_overview')
-        if overview_config:
-            print(f"      周一概览: {overview_config.time_str}, 相对主日 {overview_config.relative_to_sunday} 天")
         
         return True
         
@@ -230,30 +223,6 @@ def test_children_team_ics():
         return False
 
 
-def test_weekly_overview_ics():
-    """测试并打印每周概览 ICS"""
-    print_separator("📅 每周全部事工概览日历 (weekly-overview.ics)")
-    
-    try:
-        ics_content = generate_weekly_overview_calendar()
-        print_ics_example(ics_content, "每周全部事工概览日历", max_lines=80)
-        
-        # 保存到文件
-        if ics_content:
-            test_file = Path("calendars/test_weekly-overview.ics")
-            test_file.parent.mkdir(exist_ok=True)
-            test_file.write_text(ics_content, encoding='utf-8')
-            print(f"\n   💾 已保存到: {test_file.absolute()}")
-        
-        return ics_content is not None
-        
-    except Exception as e:
-        print(f"   ❌ 测试失败: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
 def main():
     """主函数"""
     print("🧪 ICS 文件生成测试 - 打印示例")
@@ -275,7 +244,6 @@ def main():
     # 测试 ICS 生成
     results.append(("媒体部 ICS", test_media_team_ics()))
     results.append(("儿童部 ICS", test_children_team_ics()))
-    results.append(("每周概览 ICS", test_weekly_overview_ics()))
     
     # 总结
     print_separator("📊 测试总结")

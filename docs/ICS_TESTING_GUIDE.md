@@ -60,10 +60,7 @@ curl "http://localhost:8080/calendars/media-team.ics" -o test_media.ics
 # 3. 下载儿童部日历
 curl "http://localhost:8080/calendars/children-team.ics" -o test_children.ics
 
-# 4. 下载每周概览日历
-curl "http://localhost:8080/calendars/weekly-overview.ics" -o test_overview.ics
-
-# 5. 获取系统状态
+# 4. 获取系统状态
 curl "http://localhost:8080/api/status" | jq
 ```
 
@@ -173,7 +170,6 @@ curl "http://your-api-url/api/status" | jq '.calendars'
 - [ ] 能够读取 `service-layer/latest.json`
 - [ ] 能够解析媒体部数据
 - [ ] 能够解析儿童部数据
-- [ ] 能够解析每周概览数据
 
 ### 配置测试
 - [ ] ICS 配置能够正确加载
@@ -183,7 +179,6 @@ curl "http://your-api-url/api/status" | jq '.calendars'
 ### ICS 生成测试
 - [ ] 媒体部日历生成成功
 - [ ] 儿童部日历生成成功
-- [ ] 每周概览日历生成成功
 - [ ] ICS 文件格式正确
 - [ ] 事件数量符合预期
 - [ ] 事件时间正确（相对于主日）

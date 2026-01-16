@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.json_data_reader import get_json_data_reader
-from src.multi_calendar_generator import generate_all_calendars, generate_media_team_calendar, generate_children_team_calendar, generate_weekly_overview_calendar
+from src.multi_calendar_generator import generate_all_calendars, generate_media_team_calendar, generate_children_team_calendar
 from src.ics_notification_config import get_config_manager
 from dotenv import load_dotenv
 
@@ -66,14 +66,6 @@ def test_json_data_reader():
             print(f"   📅 第一条日期: {children_data[0].get('date')}")
             print(f"   👤 老师: {children_data[0].get('teacher')}")
         
-        # 测试读取每周概览
-        print("\n5. 测试读取每周概览...")
-        overview_data = reader.get_weekly_overview()
-        print(f"   ✅ 找到 {len(overview_data)} 条每周概览")
-        if overview_data:
-            print(f"   📅 第一条日期: {overview_data[0].get('date')}")
-            print(f"   📖 证道主题: {overview_data[0].get('sermon', {}).get('title', 'N/A')}")
-        
         return True
         
     except Exception as e:
@@ -110,18 +102,6 @@ def test_ics_config():
             print(f"      - 时间: {media_config.time_str}")
             print(f"      - 持续时间: {media_config.duration_minutes} 分钟")
             print(f"      - 提醒提前: {media_config.reminder_minutes} 分钟")
-        else:
-            print(f"   ⚠️  未找到配置")
-        
-        # 测试获取每周概览配置
-        print("\n3. 测试获取每周概览配置...")
-        overview_config = config_manager.get_notification_timing('weekly-overview', 'monday_overview')
-        if overview_config:
-            print(f"   ✅ 周一概览通知配置:")
-            print(f"      - 相对主日: {overview_config.relative_to_sunday} 天")
-            print(f"      - 时间: {overview_config.time_str}")
-            print(f"      - 持续时间: {overview_config.duration_minutes} 分钟")
-            print(f"      - 提醒提前: {overview_config.reminder_minutes} 分钟")
         else:
             print(f"   ⚠️  未找到配置")
         
@@ -174,24 +154,8 @@ def test_ics_generation():
         else:
             print(f"   ❌ 生成失败")
         
-        # 测试生成每周概览日历
-        print("\n3. 测试生成每周概览日历...")
-        overview_ics = generate_weekly_overview_calendar()
-        if overview_ics:
-            event_count = overview_ics.count('BEGIN:VEVENT')
-            print(f"   ✅ 生成成功")
-            print(f"   📊 事件数量: {event_count}")
-            print(f"   📏 文件大小: {len(overview_ics)} 字节")
-            
-            # 保存测试文件
-            test_file = Path("calendars/test_weekly-overview.ics")
-            test_file.write_text(overview_ics, encoding='utf-8')
-            print(f"   💾 已保存到: {test_file}")
-        else:
-            print(f"   ❌ 生成失败")
-        
         # 测试生成所有日历
-        print("\n4. 测试生成所有日历...")
+        print("\n3. 测试生成所有日历...")
         results = generate_all_calendars()
         if results['success']:
             print(f"   ✅ 生成成功")
@@ -256,8 +220,7 @@ def test_ics_validation():
     
     test_files = [
         "calendars/test_media-team.ics",
-        "calendars/test_children-team.ics",
-        "calendars/test_weekly-overview.ics"
+        "calendars/test_children-team.ics"
     ]
     
     for test_file in test_files:

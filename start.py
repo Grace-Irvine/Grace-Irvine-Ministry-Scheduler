@@ -26,11 +26,6 @@ def setup_environment():
         dir_path.mkdir(exist_ok=True)
         print(f"📁 目录已准备: {dir_path}")
     
-    # 检查环境变量
-    if not os.getenv('GOOGLE_SPREADSHEET_ID'):
-        print("⚠️ 未设置GOOGLE_SPREADSHEET_ID环境变量")
-        print("💡 请在.env文件中设置或使用默认值")
-    
     return True
 
 def check_dependencies():
@@ -40,8 +35,6 @@ def check_dependencies():
     required_packages = [
         'streamlit',
         'pandas',
-        'gspread',
-        # 'python-dotenv'
     ]
     
     missing_packages = []

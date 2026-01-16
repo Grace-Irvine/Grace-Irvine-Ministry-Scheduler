@@ -21,8 +21,7 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # 导入项目模块
-from src.models import MinistryAssignment, ServiceRole
-from src.multi_calendar_generator import generate_all_calendars, generate_media_team_calendar, generate_children_team_calendar, generate_weekly_overview_calendar
+from src.multi_calendar_generator import generate_all_calendars
 from src.cloud_storage_manager import get_storage_manager
 from dotenv import load_dotenv
 
@@ -78,8 +77,7 @@ async def root():
             "update_ics": "/api/update-ics",
             "calendars": {
                 "media_team": "/calendars/media-team.ics",
-                "children_team": "/calendars/children-team.ics",
-                "weekly_overview": "/calendars/weekly-overview.ics"
+                "children_team": "/calendars/children-team.ics"
             },
             "status": "/api/status"
         }
@@ -94,7 +92,7 @@ async def update_ics_calendar(
     
     Args:
         calendar_types: 要更新的日历类型列表，如果为None则更新所有类型
-                      可选值: ['media-team', 'children-team', 'weekly-overview']
+                      可选值: ['media-team', 'children-team']
     """
     try:
         logger.info("开始更新ICS日历文件...")
@@ -146,9 +144,9 @@ async def serve_calendar(calendar_type: str):
     """提供ICS日历文件下载
     
     Args:
-        calendar_type: 日历类型 (media-team, children-team, weekly-overview)
+        calendar_type: 日历类型 (media-team, children-team)
     """
-    valid_types = ['media-team', 'children-team', 'weekly-overview']
+    valid_types = ['media-team', 'children-team']
     
     if calendar_type not in valid_types:
         raise HTTPException(
@@ -191,7 +189,7 @@ async def serve_calendar(calendar_type: str):
 async def get_service_status():
     """获取服务状态信息"""
     storage_manager = get_storage_manager()
-    calendar_types = ['media-team', 'children-team', 'weekly-overview']
+    calendar_types = ['media-team', 'children-team']
     
     status = {
         "service": "Grace Irvine Ministry Scheduler API",

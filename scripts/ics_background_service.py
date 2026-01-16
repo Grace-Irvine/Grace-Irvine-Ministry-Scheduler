@@ -14,17 +14,16 @@ import logging
 import threading
 import time
 import signal
-from datetime import datetime, date, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from flask import Flask, jsonify, Response, request
+from typing import Dict, Any
+from flask import Flask, jsonify, Response
 from google.cloud import storage
 
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.scheduler import GoogleSheetsExtractor
-from src.template_manager import get_default_template_manager
+from src.multi_calendar_generator import generate_all_calendars
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,186 +33,23 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # 全局变量
-sheets_extractor = None
-template_manager = None
+data_source_ready = False
 last_update_time = None
 is_running = True
 
 def initialize_components():
     """初始化组件"""
-    global sheets_extractor, template_manager
+    global data_source_ready
     
     try:
-        spreadsheet_id = os.getenv('GOOGLE_SPREADSHEET_ID')
-        
-        if not spreadsheet_id:
-            logger.error("❌ 未配置GOOGLE_SPREADSHEET_ID")
-            return False
-        
-        sheets_extractor = GoogleSheetsExtractor(spreadsheet_id)
-        template_manager = get_default_template_manager()
-        
-        logger.info("✅ 后台服务组件初始化成功")
+        # 使用GCS清洗后的JSON数据作为数据源
+        data_source_ready = True
+        logger.info("✅ 后台服务组件初始化成功（GCS JSON 数据源）")
         return True
         
     except Exception as e:
         logger.error(f"❌ 初始化组件失败: {e}")
         return False
-
-def escape_ics_text(text: str) -> str:
-    """转义ICS文本中的特殊字符"""
-    text = text.replace('\\', '\\\\')
-    text = text.replace(',', '\\,')
-    text = text.replace(';', '\\;')
-    text = text.replace('\n', '\\n')
-    return text
-
-def create_ics_event(uid: str, summary: str, description: str, 
-                    start_dt: datetime, end_dt: datetime, location: str = "Grace Irvine 教会") -> str:
-    """创建ICS事件字符串"""
-    start_str = start_dt.strftime('%Y%m%dT%H%M%S')
-    end_str = end_dt.strftime('%Y%m%dT%H%M%S')
-    dtstamp_str = datetime.now().strftime('%Y%m%dT%H%M%S')
-    
-    event_lines = [
-        "BEGIN:VEVENT",
-        f"UID:{uid}",
-        f"DTSTAMP:{dtstamp_str}",
-        f"DTSTART:{start_str}",
-        f"DTEND:{end_str}",
-        f"SUMMARY:{escape_ics_text(summary)}",
-        f"DESCRIPTION:{escape_ics_text(description)}",
-        f"LOCATION:{escape_ics_text(location)}",
-        "BEGIN:VALARM",
-        "ACTION:DISPLAY",
-        f"DESCRIPTION:提醒：{escape_ics_text(summary)}",
-        "TRIGGER:-PT30M",
-        "END:VALARM",
-        "END:VEVENT"
-    ]
-    
-    return "\n".join(event_lines)
-
-def generate_coordinator_ics(assignments) -> str:
-    """生成负责人日历ICS内容"""
-    try:
-        ics_lines = [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//Grace Irvine Ministry Scheduler//Coordinator Calendar//CN",
-            "CALSCALE:GREGORIAN",
-            "METHOD:PUBLISH",
-            "X-WR-CALNAME:Grace Irvine 事工协调日历",
-            "X-WR-CALDESC:事工通知发送提醒日历（Cloud Run自动更新）",
-            "X-WR-TIMEZONE:America/Los_Angeles",
-            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        ]
-        
-        today = date.today()
-        # 保留过去4周的事件，避免每次更新时删除历史记录
-        cutoff_date = today - timedelta(days=28)  # 4周前
-        # 包含过去4周到未来15周的事件
-        relevant_assignments = [a for a in assignments if a.date >= cutoff_date][:19]  # 4周过去 + 15周未来
-        
-        events_created = 0
-        
-        for assignment in relevant_assignments:
-            # 周三确认通知事件
-            wednesday = assignment.date - timedelta(days=4)
-            if wednesday >= today - timedelta(days=7):
-                try:
-                    notification_content = template_manager.render_weekly_confirmation(assignment)
-                    event_ics = create_ics_event(
-                        uid=f"weekly_confirmation_{wednesday.strftime('%Y%m%d')}@graceirvine.org",
-                        summary=f"发送周末确认通知 ({assignment.date.month}/{assignment.date.day})",
-                        description=f"发送内容：\n\n{notification_content}",
-                        start_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=0)),
-                        end_dt=datetime.combine(wednesday, datetime.min.time().replace(hour=20, minute=30))
-                    )
-                    ics_lines.append(event_ics)
-                    events_created += 1
-                except Exception as e:
-                    logger.error(f"创建周三事件失败: {e}")
-            
-            # 周六提醒通知事件
-            saturday = assignment.date - timedelta(days=1)
-            if saturday >= today - timedelta(days=7):
-                try:
-                    notification_content = template_manager.render_sunday_reminder(assignment)
-                    event_ics = create_ics_event(
-                        uid=f"sunday_reminder_{saturday.strftime('%Y%m%d')}@graceirvine.org",
-                        summary=f"发送主日提醒通知 ({assignment.date.month}/{assignment.date.day})",
-                        description=f"发送内容：\n\n{notification_content}",
-                        start_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=0)),
-                        end_dt=datetime.combine(saturday, datetime.min.time().replace(hour=20, minute=30))
-                    )
-                    ics_lines.append(event_ics)
-                    events_created += 1
-                except Exception as e:
-                    logger.error(f"创建周六事件失败: {e}")
-        
-        ics_lines.append("END:VCALENDAR")
-        
-        logger.info(f"✅ 负责人日历生成完成: {events_created} 个事件")
-        return "\n".join(ics_lines)
-        
-    except Exception as e:
-        logger.error(f"生成负责人日历失败: {e}")
-        return None
-
-def generate_workers_ics(assignments) -> str:
-    """生成同工日历ICS内容"""
-    try:
-        ics_lines = [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//Grace Irvine Ministry Scheduler//Workers Calendar//CN",
-            "CALSCALE:GREGORIAN",
-            "METHOD:PUBLISH",
-            "X-WR-CALNAME:Grace Irvine 同工服事日历",
-            "X-WR-CALDESC:同工事工服事安排日历（Cloud Run自动更新）",
-            "X-WR-TIMEZONE:America/Los_Angeles",
-            f"X-WR-CALDESC:最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        ]
-        
-        today = date.today()
-        future_assignments = [a for a in assignments if a.date >= today][:10]
-        
-        events_created = 0
-        
-        for assignment in future_assignments:
-            service_roles = [
-                ("音控", assignment.audio_tech, "09:00", "12:00"),
-                ("导播/摄影", assignment.camera_operator, "09:30", "12:00"),
-                ("ProPresenter播放", assignment.propresenter, "09:00", "12:00")
-            ]
-            
-            for role_name, person_name, start_time, end_time in service_roles:
-                if person_name and person_name.strip():
-                    try:
-                        start_hour, start_minute = map(int, start_time.split(':'))
-                        end_hour, end_minute = map(int, end_time.split(':'))
-                        
-                        event_ics = create_ics_event(
-                            uid=f"service_{role_name}_{assignment.date.strftime('%Y%m%d')}_{person_name}@graceirvine.org",
-                            summary=f"主日服事 - {role_name}",
-                            description=f"角色：{role_name}\n负责人：{person_name}\n到场时间：{start_time}\n\n愿主同在，出入平安！",
-                            start_dt=datetime.combine(assignment.date, datetime.min.time().replace(hour=start_hour, minute=start_minute)),
-                            end_dt=datetime.combine(assignment.date, datetime.min.time().replace(hour=end_hour, minute=end_minute))
-                        )
-                        ics_lines.append(event_ics)
-                        events_created += 1
-                    except Exception as e:
-                        logger.error(f"创建 {person_name} 服事事件失败: {e}")
-        
-        ics_lines.append("END:VCALENDAR")
-        
-        logger.info(f"✅ 同工日历生成完成: {events_created} 个事件")
-        return "\n".join(ics_lines)
-        
-    except Exception as e:
-        logger.error(f"生成同工日历失败: {e}")
-        return None
 
 def upload_to_cloud_storage(content: str, filename: str) -> bool:
     """上传ICS文件到Cloud Storage"""
@@ -267,53 +103,34 @@ def update_all_calendars() -> Dict[str, Any]:
     try:
         logger.info("🔄 开始更新ICS日历文件...")
         
-        if not sheets_extractor or not template_manager:
+        if not data_source_ready:
             logger.error("❌ 组件未初始化")
             return {'success': False, 'error': '组件未初始化'}
         
-        # 获取最新数据
-        assignments = sheets_extractor.parse_ministry_data()
-        
-        if not assignments:
-            logger.warning("⚠️ 未找到事工安排数据")
-            return {'success': False, 'error': '未找到事工安排数据'}
-        
-        logger.info(f"📊 获取到 {len(assignments)} 条事工安排")
+        results = generate_all_calendars()
+        if not results or not results.get('calendars'):
+            logger.warning("⚠️ 未生成任何日历内容")
+            return {'success': False, 'error': '未生成任何日历内容'}
         
         results = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
-            'assignments_count': len(assignments),
             'files_updated': []
         }
         
-        # 生成负责人日历
-        coordinator_ics = generate_coordinator_ics(assignments)
-        if coordinator_ics:
-            # 上传到Cloud Storage
-            if upload_to_cloud_storage(coordinator_ics, 'grace_irvine_coordinator.ics'):
-                results['files_updated'].append({
-                    'name': 'grace_irvine_coordinator.ics',
-                    'events': coordinator_ics.count('BEGIN:VEVENT'),
-                    'type': '负责人日历'
-                })
+        for calendar_type, calendar_result in results['calendars'].items():
+            if not calendar_result.get('success') or not calendar_result.get('content'):
+                continue
             
-            # 保存本地备份
-            save_local_backup(coordinator_ics, 'grace_irvine_coordinator.ics')
-        
-        # 生成同工日历
-        workers_ics = generate_workers_ics(assignments)
-        if workers_ics:
-            # 上传到Cloud Storage
-            if upload_to_cloud_storage(workers_ics, 'grace_irvine_workers.ics'):
+            filename = f"{calendar_type}.ics"
+            content = calendar_result['content']
+            if upload_to_cloud_storage(content, filename):
                 results['files_updated'].append({
-                    'name': 'grace_irvine_workers.ics',
-                    'events': workers_ics.count('BEGIN:VEVENT'),
-                    'type': '同工日历'
+                    'name': filename,
+                    'events': calendar_result.get('events', 0),
+                    'type': calendar_type
                 })
-            
-            # 保存本地备份
-            save_local_backup(workers_ics, 'grace_irvine_workers.ics')
+            save_local_backup(content, filename)
         
         # 更新时间戳
         last_update_time = datetime.now()
@@ -365,8 +182,7 @@ def api_status():
             'status': 'running' if is_running else 'stopped',
             'last_update': last_update_time.isoformat() if last_update_time else None,
             'components': {
-                'sheets_extractor': sheets_extractor is not None,
-                'template_manager': template_manager is not None
+                'data_source_ready': data_source_ready
             },
             'timestamp': datetime.now().isoformat()
         }
