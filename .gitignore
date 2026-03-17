@@ -223,3 +223,6 @@ k8s/
 docker-compose.override.yml
 local_settings.py
 /calendars
+
+# Archive (old code)
+archive/
