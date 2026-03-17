@@ -1,7 +1,0 @@
-steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-f', 'Dockerfile.ui', '-t', 'gcr.io/$PROJECT_ID/grace-irvine-ui', '.']
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'gcr.io/$PROJECT_ID/grace-irvine-ui']
-images:
-- 'gcr.io/$PROJECT_ID/grace-irvine-ui'

@@ -1,8 +1,0 @@
-{% set roles_text = [] %}
-{%- for schedule in week_schedules -%}
-  {%- for service_type, person in schedule.roles.items() -%}
-    {%- set _ = roles_text.append(person + "(" + service_type + ")") -%}
-  {%- endfor -%}
-{%- endfor -%}
-
-【恩典尔湾】本周事工确认({{ week_range }}): {{ roles_text[:5] | join(', ') }}{% if roles_text|length > 5 %}等{{ roles_text|length }}人{% endif %}。请确认安排，如需调换请周五前联系。详见邮件。
