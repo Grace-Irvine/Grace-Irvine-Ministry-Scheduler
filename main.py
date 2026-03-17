@@ -50,19 +50,21 @@ class Config:
         
         # 周三通知配置: 周三 19:00-21:00 (晚上7点到9点)
         self.wednesday_enabled = os.getenv('WEDNESDAY_ENABLED', 'true').lower() == 'true'
-        self.wednesday_weekday = int(os.getenv('WEDNESDAY_WEEKDAY', '2'))  # 周三
+        self.wednesday_weekday = int(os.getenv('WEDNESDAY_WEEKDAY', '2'))  # 周三 (0=周一, 2=周三, 6=周日)
         self.wednesday_hour = int(os.getenv('WEDNESDAY_HOUR', '19'))  # 19:00
         self.wednesday_minute = int(os.getenv('WEDNESDAY_MINUTE', '0'))
         self.wednesday_duration = int(os.getenv('WEDNESDAY_DURATION', '120'))  # 2小时
-        self.wednesday_days_before_sunday = 7 - self.wednesday_weekday if self.wednesday_weekday <= 6 else 4
+        # 计算周日到周三的天数差 (周日=6, 周三=2, 差值为 2-6 = -4, 即往前推4天)
+        self.wednesday_days_before_sunday = (6 - self.wednesday_weekday) % 7
         
         # 周六通知配置: 周六 09:00-10:00 (早上9点到10点)
         self.saturday_enabled = os.getenv('SATURDAY_ENABLED', 'true').lower() == 'true'
-        self.saturday_weekday = int(os.getenv('SATURDAY_WEEKDAY', '5'))  # 周六
+        self.saturday_weekday = int(os.getenv('SATURDAY_WEEKDAY', '5'))  # 周六 (0=周一, 5=周六, 6=周日)
         self.saturday_hour = int(os.getenv('SATURDAY_HOUR', '9'))  # 09:00
         self.saturday_minute = int(os.getenv('SATURDAY_MINUTE', '0'))
         self.saturday_duration = int(os.getenv('SATURDAY_DURATION', '60'))  # 1小时
-        self.saturday_days_before_sunday = 7 - self.saturday_weekday if self.saturday_weekday <= 6 else 1
+        # 计算周日到周六的天数差 (周日=6, 周六=5, 差值为 5-6 = -1, 即往前推1天)
+        self.saturday_days_before_sunday = (6 - self.saturday_weekday) % 7
         
         # 经文轮换
         self.scripture_rotation = os.getenv('SCRIPTURE_ROTATION', 'true').lower() == 'true'
@@ -85,18 +87,16 @@ class MinistryAssignment:
     video_director: Optional[str] = None      # 导播/摄影
     propresenter_play: Optional[str] = None   # ProPresenter播放
     propresenter_update: Optional[str] = None # ProPresenter更新
+    video_editor: Optional[str] = None        # 视频剪辑
     
-    def get_all_assignments(self) -> Dict[str, str]:
-        """获取所有非空的事工安排"""
+    def get_all_assignments(self, show_empty: bool = True) -> Dict[str, str]:
+        """获取所有事工安排，空缺显示'待安排'"""
         assignments = {}
-        if self.audio_tech:
-            assignments['音控'] = self.audio_tech
-        if self.video_director:
-            assignments['导播/摄影'] = self.video_director
-        if self.propresenter_play:
-            assignments['ProPresenter播放'] = self.propresenter_play
-        if self.propresenter_update:
-            assignments['ProPresenter更新'] = self.propresenter_update
+        assignments['音控'] = self.audio_tech if self.audio_tech else '待安排'
+        assignments['导播/摄影'] = self.video_director if self.video_director else '待安排'
+        assignments['ProPresenter播放'] = self.propresenter_play if self.propresenter_play else '待安排'
+        assignments['ProPresenter更新'] = self.propresenter_update if self.propresenter_update else '待安排'
+        assignments['视频剪辑'] = self.video_editor if self.video_editor else '待安排'
         return assignments
 
 
@@ -104,31 +104,37 @@ class MinistryAssignment:
 # 预设经文
 # =============================================================================
 
-# 默认经文列表
+# 默认经文列表 - 格式与原来一致
 DEFAULT_SCRIPTURES = [
     """看哪，弟兄和睦同居
 是何等地善，何等地美！
-(诗篇 133:1)""",
+(诗篇 133:1 和合本)""",
     """又要彼此相顾，激发爱心，勉励行善。
 你们不可停止聚会，好像那些停止惯了的人，
-(希伯来书 10:24-25)""",
+(希伯来书 10:24-25 和合本)""",
     """用诗章、颂词、灵歌彼此对说，
 口唱心和地赞美主。
-(以弗所书 5:19)""",
+(以弗所书 5:19 和合本)""",
     """凡你们所做的，都要凭爱心而做。
-(哥林多前书 16:14)""",
+(哥林多前书 16:14 和合本)""",
     """所以，你们或吃或喝，无论做什么，
 都要为荣耀神而行。
-(哥林多前书 10:31)""",
+(哥林多前书 10:31 和合本)""",
     """愿主我们神的荣美归于我们身上。
 愿你坚立我们手所做的工。
-(诗篇 90:17)""",
+(诗篇 90:17 和合本)""",
     """你们当乐意事奉耶和华，
 当来向他歌唱！
-(诗篇 100:2)""",
-    """各人要照所得的恩赐彼此服侍，
-做神百般恩赐的好管家。
-(彼得前书 4:10)""",
+(诗篇 100:2 和合本)""",
+    """按我们所得的恩赐，各有不同。
+或说预言，就当照着信心的程度说预言；
+或作执事，就当专一执事；
+或作教导的，就当专一教导；
+或作劝化的，就当专一劝化；
+施舍的，就当诚实；
+治理的，就当殷勤；
+怜悯人的，就当甘心。
+(罗马书 12:6-8 和合本)""",
 ]
 
 
@@ -198,28 +204,33 @@ class ScriptureStore:
 class SheetsReader:
     """Google Sheets 读取器 - 智能列匹配"""
     
-    # 列名匹配模式
+    # 列名匹配模式 - 支持多种可能的列名变体
     COLUMN_PATTERNS = {
         'date': [
-            '日期', 'date', '主日日期', '时间', '礼拜日期',
+            '日期', 'date', '主日日期', '时间', '礼拜日期', '主日', 'sunday', 'date',
             r'\d{1,2}/\d{1,2}/\d{4}',
         ],
         'audio_tech': [
-            '音控', 'audio', 'sound', '音响', '音频', 'audio tech', 'sound control',
+            '音控', 'audio', 'sound', '音响', '音频', 'audio tech', 'sound control', 'audio_tech',
         ],
         'video_director': [
-            '导播', '摄影', 'video', 'camera', '直播', 'stream', 'video director',
             '导播/摄影', '摄影/导播', 'video/camera', 'camera/video',
+            '导播', '摄影', 'video', 'camera', '直播', 'stream', 'video director',
+            'video_director', '导播摄影', '摄影导播',
         ],
         'propresenter_play': [
             'propresenter播放', 'propresenter play', 'ppt播放', '幻灯片播放',
             'pro presenter播放', 'pro presenter play', 'presentation播放',
-            'propresenter', 'ppt', '幻灯片', 'presentation',
+            'propresenter', 'ppt', '幻灯片', 'presentation', 'propresenter_play',
+            '播放', 'play',
         ],
         'propresenter_update': [
             'propresenter更新', 'propresenter update', 'ppt更新', '幻灯片更新',
             'pro presenter更新', 'pro presenter update', 'presentation更新',
-            '更新', 'update',
+            '更新', 'update', 'propresenter_update',
+        ],
+        'video_editor': [
+            '视频剪辑', 'video editor', '剪辑', 'editor', 'video_editor', 'video editing',
         ],
     }
     
@@ -269,27 +280,40 @@ class SheetsReader:
             worksheet = spreadsheet.worksheet(sheet_name)
             values = worksheet.get_all_values()
             
-            if not values:
-                logger.warning("表格为空")
+            if len(values) < 2:
+                logger.warning("表格数据不足（至少需要2行：部门标题+列名）")
                 return []
             
-            # 转换为 DataFrame
-            headers = values[0]
-            df = pd.DataFrame(values[1:], columns=headers)
+            # 调试：打印前5行原始数据
+            logger.info(f"🔍 原始数据前5行:")
+            for i in range(min(5, len(values))):
+                logger.info(f"  行 {i}: {values[i][:5]}...")  # 只打印前5列
+            
+            # 跳过第一行（部门标题），使用第二行作为实际列名
+            headers = values[1]
+            df = pd.DataFrame(values[2:], columns=headers)
             
             logger.info(f"📊 读取到 {len(df)} 行数据，{len(df.columns)} 列")
+            logger.info(f"📋 所有列名: {list(df.columns)}")
             
             # 智能匹配列
             column_mapping = self._match_columns(df)
+            logger.info(f"🔍 列映射结果: {column_mapping}")
             
-            # 解析数据
+            # 解析数据 - 过滤掉旧数据和无效日期
             assignments = []
-            for _, row in df.iterrows():
-                assignment = self._parse_row(row, column_mapping)
-                if assignment:
-                    assignments.append(assignment)
+            skipped_rows = 0
             
-            logger.info(f"✅ 成功解析 {len(assignments)} 条有效排程")
+            for idx, row in df.iterrows():
+                assignment = self._parse_row(row, column_mapping)
+                
+                # 过滤：只保留 2026 年以后的排程
+                if assignment and assignment.date.year >= 2026:
+                    assignments.append(assignment)
+                else:
+                    skipped_rows += 1
+            
+            logger.info(f"✅ 成功解析 {len(assignments)} 条 2026 年以后排程 (跳过 {skipped_rows} 行旧数据/无效行)")
             return assignments
             
         except Exception as e:
@@ -297,41 +321,50 @@ class SheetsReader:
             raise
     
     def _match_columns(self, df) -> Dict[str, Optional[int]]:
-        """智能匹配列名"""
+        """智能匹配列名 - 优先匹配更长的精确列名"""
         mapping = {}
         available_columns = {i: str(col).strip().lower() for i, col in enumerate(df.columns)}
         
         for field, patterns in self.COLUMN_PATTERNS.items():
-            matched = False
+            best_match = None
+            best_match_length = 0
+            
             for col_index, col_name_lower in available_columns.items():
                 for pattern in patterns:
                     if isinstance(pattern, str):
-                        if pattern.lower() in col_name_lower:
-                            mapping[field] = col_index
-                            original_name = df.columns[col_index]
-                            logger.info(f"  ✅ {field} → '{original_name}' (索引 {col_index})")
-                            matched = True
-                            break
+                        pattern_lower = pattern.lower()
+                        if pattern_lower in col_name_lower:
+                            # 优先选择更长的匹配（更精确）
+                            if len(pattern_lower) > best_match_length:
+                                best_match = col_index
+                                best_match_length = len(pattern_lower)
+                                break
                     else:
                         if re.search(pattern, col_name_lower, re.IGNORECASE):
-                            mapping[field] = col_index
-                            original_name = df.columns[col_index]
-                            logger.info(f"  ✅ {field} → '{original_name}' (索引 {col_index}) [regex]")
-                            matched = True
+                            best_match = col_index
+                            best_match_length = 999  # 正则表达式视为高优先级
                             break
-                if matched:
-                    break
             
-            if not matched:
+            if best_match is not None:
+                mapping[field] = best_match
+                original_name = df.columns[best_match]
+                logger.info(f"  ✅ {field} → '{original_name}' (索引 {best_match})")
+            else:
                 logger.warning(f"  ⚠️ {field} 未找到匹配的列")
                 mapping[field] = None
         
         return mapping
     
-    def _parse_row(self, row, column_mapping: Dict[str, Optional[int]]) -> Optional[MinistryAssignment]:
+    def _parse_row(self, row, column_mapping: Dict[str, Optional[int]], row_idx: int = -1) -> Optional[MinistryAssignment]:
         """解析单行数据"""
         # 解析日期
-        date_value = self._get_column_value(row, column_mapping.get('date'))
+        date_col_idx = column_mapping.get('date')
+        date_value = self._get_column_value(row, date_col_idx)
+        
+        # 调试：打印前3行的日期解析过程
+        if row_idx >= 0 and row_idx < 3:
+            logger.info(f"  [DEBUG] 行 {row_idx}: date_col_idx={date_col_idx}, date_value='{date_value}'")
+        
         parsed_date = self._parse_date(date_value)
         if not parsed_date:
             return None
@@ -341,15 +374,17 @@ class SheetsReader:
         video_director = self._clean_name(self._get_column_value(row, column_mapping.get('video_director')))
         propresenter_play = self._clean_name(self._get_column_value(row, column_mapping.get('propresenter_play')))
         propresenter_update = self._clean_name(self._get_column_value(row, column_mapping.get('propresenter_update')))
+        video_editor = self._clean_name(self._get_column_value(row, column_mapping.get('video_editor')))
         
         # 只有当至少有一个角色有人时才创建记录
-        if any([audio_tech, video_director, propresenter_play, propresenter_update]):
+        if any([audio_tech, video_director, propresenter_play, propresenter_update, video_editor]):
             return MinistryAssignment(
                 date=parsed_date,
                 audio_tech=audio_tech,
                 video_director=video_director,
                 propresenter_play=propresenter_play,
-                propresenter_update=propresenter_update
+                propresenter_update=propresenter_update,
+                video_editor=video_editor
             )
         return None
     
@@ -358,9 +393,15 @@ class SheetsReader:
         if col_index is None:
             return None
         try:
+            import pandas as pd
             value = row.iloc[col_index] if hasattr(row, 'iloc') else row[col_index]
-            return str(value) if pd.notna(value) else None
-        except:
+            # 调试：打印原始值类型和内容
+            # logger.info(f"  [DEBUG] col_index={col_index}, value={repr(value)}, type={type(value)}")
+            if pd.notna(value) and str(value).strip():
+                return str(value).strip()
+            return None
+        except Exception as e:
+            logger.warning(f"  [DEBUG] 获取列值失败: {e}")
             return None
     
     def _parse_date(self, date_str: Optional[str]) -> Optional[date]:
@@ -396,15 +437,16 @@ class SheetsReader:
             return None
     
     def _clean_name(self, name: Optional[str]) -> Optional[str]:
-        """清洗人名"""
+        """清洗人名 - 过滤无效值"""
         if not name:
             return None
         
         name = str(name).strip()
         
-        # 无效模式
+        # 无效模式（包含"待安排"）
         invalid_patterns = [
-            r'^$', r'^-+$', r'^[?？]+$', r'^(待定|TBD|N/A|NA)$',
+            r'^$', r'^-+$', r'^[?？]+$', 
+            r'^(待定|待安排|TBD|N/A|NA|待定中|待确认|暂无|无)$',
         ]
         
         for pattern in invalid_patterns:
@@ -533,42 +575,38 @@ class ICSGenerator:
             return None
     
     def _render_wednesday_notification(self, assignment: MinistryAssignment, scripture: str) -> str:
-        """渲染周三通知内容"""
+        """渲染周三通知内容 - 匹配原有格式，使用真实换行符"""
         assignments = assignment.get_all_assignments()
         
         lines = [
-            f"主日服事确认 ({assignment.date.month}/{assignment.date.day})",
+            f"【本周{assignment.date.month}月{assignment.date.day}日主日事工安排提醒】🕊️",
             "",
-            "📖 本周经文分享：",
-            scripture,
-            "",
-            "🙏 本周服事安排：",
         ]
         
         for role, person in assignments.items():
-            lines.append(f"  • {role}: {person}")
+            lines.append(f"• {role}：{person}")
         
         lines.extend([
             "",
-            "请确认是否可以按时服事，如有问题请联系协调员。",
+            f"📖 {scripture}",
             "",
-            "愿神祝福！"
+            "请大家确认时间，若有冲突请尽快私信我，感谢摆上 🙏"
         ])
         
-        return "\\n".join(lines)
+        # 使用真实换行符，ICS 会正确处理
+        return "\n".join(lines)
     
     def _render_saturday_notification(self, assignment: MinistryAssignment) -> str:
-        """渲染周六通知内容"""
+        """渲染周六通知内容 - 匹配原有格式，使用真实换行符"""
         assignments = assignment.get_all_assignments()
         
         lines = [
-            f"主日服事提醒 ({assignment.date.month}/{assignment.date.day})",
+            f"【明天{assignment.date.month}月{assignment.date.day}日主日事工提醒】🕊️",
             "",
-            "明天主日服事安排：",
         ]
         
         for role, person in assignments.items():
-            lines.append(f"  • {role}: {person}")
+            lines.append(f"• {role}：{person}")
         
         lines.extend([
             "",
@@ -577,7 +615,8 @@ class ICSGenerator:
             "愿神祝福！"
         ])
         
-        return "\\n".join(lines)
+        # 使用真实换行符，ICS 会正确处理
+        return "\n".join(lines)
     
     def _create_ics_event(self, uid: str, summary: str, description: str, 
                          event_date: date, hour: int, minute: int, duration: int = 30) -> str:
